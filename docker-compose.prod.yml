@@ -1,0 +1,63 @@
+# Docker Compose Configuration for Production Deployment
+# Use with: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+version: '3.8'
+
+services:
+  reading-tracker:
+    # Production-specific overrides
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=warn
+    # Remove development volumes
+    volumes:
+      - reading_data:/app/data
+      - reading_logs:/app/logs
+    # Production resource limits optimized for Raspberry Pi
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.5'
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    # Production logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    # Read-only root filesystem for security
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+      - /app/logs:noexec,nosuid,size=50m
+
+  # Optional: Reverse proxy for production
+  nginx:
+    image: nginx:alpine
+    container_name: reading-tracker-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - reading-tracker
+    restart: unless-stopped
+    networks:
+      - reading-network
+    profiles:
+      - proxy
+    labels:
+      - "com.personal-reading-tracker.service=proxy"

@@ -1,0 +1,56 @@
+# Development Dockerfile for Personal Reading Tracker
+# Optimized for local development with hot reloading
+
+FROM node:20-alpine AS development
+
+# Install system dependencies
+RUN apk add --no-cache \
+    dumb-init \
+    curl \
+    git \
+    && rm -rf /var/cache/apk/*
+
+# Create app user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001 -G nodejs
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files for dependency installation
+COPY --chown=nodejs:nodejs backend/package*.json ./backend/
+COPY --chown=nodejs:nodejs frontend/package*.json ./frontend/
+
+# Install dependencies as root, then change ownership
+USER root
+RUN cd backend && npm ci && cd ../frontend && npm ci
+RUN chown -R nodejs:nodejs /app
+
+# Create directories for data persistence and logs
+RUN mkdir -p /app/data /app/logs && \
+    chown -R nodejs:nodejs /app/data /app/logs
+
+# Switch to non-root user
+USER nodejs
+
+# Copy source code (will be overridden by volume mounts in development)
+COPY --chown=nodejs:nodejs backend/ ./backend/
+COPY --chown=nodejs:nodejs frontend/ ./frontend/
+
+# Set development environment variables
+ENV NODE_ENV=development
+ENV PORT=3000
+ENV DATABASE_PATH=/app/data/reading-tracker-dev.db
+
+# Expose ports for backend and frontend dev servers
+EXPOSE 3000 5173
+
+# Health check for development
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+# Use dumb-init for proper signal handling
+ENTRYPOINT ["dumb-init", "--"]
+
+# Default command - can be overridden in docker-compose
+CMD ["sh", "-c", "cd /app/backend && npm run dev"]

@@ -1,0 +1,30 @@
+{
+  "name": "personal-reading-tracker",
+  "version": "1.0.0",
+  "description": "A personal reading tracker application with progress tracking and highlights management",
+  "scripts": {
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "cd backend && npm test",
+    "test:frontend": "cd frontend && npm test",
+    "test:e2e": "npx playwright test",
+    "test:e2e:ui": "npx playwright test --ui",
+    "test:visual": "npx playwright test visual-regression.spec.ts",
+    "test:performance": "cd backend && npm test -- --testNamePattern=\"Performance\"",
+    "test:all": "./scripts/run-all-tests.sh",
+    "test:ci": "npm run test && npm run test:e2e",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build": "npm run build:frontend && npm run build:backend",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "start": "npm run start:backend",
+    "start:backend": "cd backend && npm start",
+    "docker:build": "docker build -t personal-reading-tracker .",
+    "docker:run": "docker run -p 3000:3000 personal-reading-tracker",
+    "docker:test": "docker build -t personal-reading-tracker:test . && docker run --rm personal-reading-tracker:test npm run test:ci"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.2",
+    "pixelmatch": "^7.1.0"
+  }
+}
