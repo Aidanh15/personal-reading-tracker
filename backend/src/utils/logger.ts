@@ -172,10 +172,21 @@ export class Logger {
     this.info(`Performance: ${metric} = ${value}${unit}`, meta, 'PERFORMANCE');
   }
 
-  // System monitoring logs for Raspberry Pi
+  // System monitoring logs for Raspberry Pi with frequency control
+  private lastSystemLog: Map<string, number> = new Map();
+  private systemLogInterval: number = 5 * 60 * 1000; // 5 minutes
+
   public system(metric: string, value: number | string, unit?: string, meta?: any): void {
-    const message = unit ? `System: ${metric} = ${value}${unit}` : `System: ${metric} = ${value}`;
-    this.info(message, meta, 'SYSTEM');
+    const key = `${metric}`;
+    const now = Date.now();
+    const lastLog = this.lastSystemLog.get(key) || 0;
+    
+    // Only log system metrics every 5 minutes to reduce noise
+    if (now - lastLog > this.systemLogInterval) {
+      const message = unit ? `System: ${metric} = ${value}${unit}` : `System: ${metric} = ${value}`;
+      this.info(message, meta, 'SYSTEM');
+      this.lastSystemLog.set(key, now);
+    }
   }
 
   // Log rotation and cleanup

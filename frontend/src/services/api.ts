@@ -130,32 +130,32 @@ export const booksApi = {
   // Get all books
   async getAll(): Promise<Book[]> {
     return retryRequest(async () => {
-      const response: AxiosResponse<Book[]> = await api.get('/books');
-      return response.data;
+      const response: AxiosResponse<{books: Book[]}> = await api.get('/books');
+      return response.data.books;
     });
   },
 
   // Get book by ID
   async getById(id: number): Promise<Book> {
     return retryRequest(async () => {
-      const response: AxiosResponse<Book> = await api.get(`/books/${id}`);
-      return response.data;
+      const response: AxiosResponse<{book: Book}> = await api.get(`/books/${id}`);
+      return response.data.book;
     });
   },
 
   // Add new book
   async create(data: BookFormData): Promise<Book> {
     return retryRequest(async () => {
-      const response: AxiosResponse<Book> = await api.post('/books', data);
-      return response.data;
+      const response: AxiosResponse<{book: Book}> = await api.post('/books', data);
+      return response.data.book;
     });
   },
 
   // Update book progress
   async updateProgress(id: number, data: ProgressUpdateData): Promise<Book> {
     return retryRequest(async () => {
-      const response: AxiosResponse<Book> = await api.put(`/books/${id}/progress`, data);
-      return response.data;
+      const response: AxiosResponse<{book: Book}> = await api.put(`/books/${id}/progress`, data);
+      return response.data.book;
     });
   },
 
@@ -176,16 +176,16 @@ export const booksApi = {
   // Get book highlights
   async getHighlights(id: number): Promise<Highlight[]> {
     return retryRequest(async () => {
-      const response: AxiosResponse<Highlight[]> = await api.get(`/books/${id}/highlights`);
-      return response.data;
+      const response: AxiosResponse<{highlights: Highlight[]}> = await api.get(`/books/${id}/highlights`);
+      return response.data.highlights;
     });
   },
 
   // Add highlight to book
   async addHighlight(id: number, data: HighlightFormData): Promise<Highlight> {
     return retryRequest(async () => {
-      const response: AxiosResponse<Highlight> = await api.post(`/books/${id}/highlights`, data);
-      return response.data;
+      const response: AxiosResponse<{highlight: Highlight}> = await api.post(`/books/${id}/highlights`, data);
+      return response.data.highlight;
     });
   },
 };

@@ -3,6 +3,7 @@ import { HighlightQueries } from './queries/highlights';
 import { CreateBookRequest, CreateHighlightRequest } from '../types';
 import { db } from './connection';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { CoverService, CoverSearchResult } from '../services/coverService';
 
 interface ParsedBook {
     title: string;
@@ -99,10 +100,54 @@ export class DatabaseSeeder {
         ]
     };
 
+    // Parse reading list from text file
+    static parseReadingList(filePath: string): CreateBookRequest[] {
+        console.log(`Parsing reading list from: ${filePath}`);
+
+        if (!existsSync(filePath)) {
+            console.warn(`Reading list file not found: ${filePath}`);
+            return [];
+        }
+
+        try {
+            const content = readFileSync(filePath, 'utf-8');
+            const lines = content.split('\n').map(line => line.trim()).filter(line => line);
+
+            const books: CreateBookRequest[] = [];
+
+            for (const line of lines) {
+                if (!line.startsWith('*')) continue;
+
+                // Remove the * and trim
+                const bookLine = line.substring(1).trim();
+
+                // Split by last dash to separate title from author(s)
+                const lastDashIndex = bookLine.lastIndexOf(' - ');
+                if (lastDashIndex === -1) continue;
+
+                const title = bookLine.substring(0, lastDashIndex).trim();
+                const authorsStr = bookLine.substring(lastDashIndex + 3).trim();
+                const authors = authorsStr.split(',').map(a => a.trim());
+
+                books.push({
+                    title,
+                    authors,
+                    position: books.length + 1
+                });
+            }
+
+            console.log(`Parsed ${books.length} books from reading list`);
+            return books;
+        } catch (error) {
+            console.error('Failed to parse reading list:', error);
+            return [];
+        }
+    }
+
     // Parse Kindle highlights from text file
     static parseKindleHighlights(filePath: string): ParsedBook[] {
         console.log(`Parsing Kindle highlights from: ${filePath}`);
-        
+
         if (!existsSync(filePath)) {
             console.warn(`Kindle highlights file not found: ${filePath}`);
             return [];
@@ -110,91 +155,73 @@ export class DatabaseSeeder {
 
         try {
             const content = readFileSync(filePath, 'utf-8');
-            const lines = content.split('\n').map(line => line.trim()).filter(line => line);
-            
+            const lines = content.split('\n').map(line => line.trim());
+
             const books: Map<string, ParsedBook> = new Map();
             let currentBook: string | null = null;
-            
+
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
-                if (!line) continue;
-                
-                // Check if this line is a book title and author (contains comma and looks like "Title, Author")
-                if (line.includes(',') && !currentBook) {
-                    const parts = line.split(',');
-                    if (parts.length >= 2 && parts[0]) {
-                        const title = parts[0].trim();
-                        const author = parts.slice(1).join(',').trim();
-                        
-                        // Skip if this looks like a quote rather than a title
-                        if (title.length > 100 || line.includes('"') || line.includes("'")) {
-                            continue;
-                        }
-                        
-                        currentBook = title;
-                        
-                        if (!books.has(title)) {
-                            books.set(title, {
-                                title,
-                                authors: [author],
-                                highlights: []
-                            });
-                        }
-                        continue;
-                    }
+
+                // Empty line - just continue, don't reset current book yet
+                if (!line) {
+                    continue;
                 }
-                
-                // Check for title: subtitle, author format
-                if (line.includes(':') && line.includes(',') && !currentBook) {
-                    const colonIndex = line.indexOf(':');
+
+                // Check for book title format: "Title, Author" or "Title: Subtitle, Author"
+                // Check for new book titles (even if we have a current book)
+                if (line.includes(',')) {
                     const commaIndex = line.lastIndexOf(',');
-                    
-                    if (commaIndex > colonIndex) {
-                        const fullTitle = line.substring(0, commaIndex).trim();
-                        const author = line.substring(commaIndex + 1).trim();
-                        
-                        // Skip if this looks like a quote
-                        if (fullTitle.length > 150 || line.includes('"') || line.includes("'")) {
+                    if (commaIndex > 0) {
+                        const beforeComma = line.substring(0, commaIndex).trim();
+                        const afterComma = line.substring(commaIndex + 1).trim();
+
+                        // Validate this looks like a book title line:
+                        // 1. Not too long (quotes can be very long)
+                        // 2. Doesn't contain quote marks
+                        // 3. Author part looks like a name (starts with capital, reasonable length)
+                        // 4. Title part starts with capital letter
+                        if (beforeComma && afterComma &&
+                            line.length < 300 &&  // Reasonable line length for a title
+                            afterComma.length < 100 && // Author names shouldn't be too long
+                            !line.includes('"') &&
+                            !line.includes("'") &&
+                            beforeComma.match(/^[A-Z0-9]/) && // Title starts with capital or number
+                            afterComma.match(/^[A-Z]/)) { // Author starts with capital
+
+                            currentBook = beforeComma;
+
+                            if (!books.has(beforeComma)) {
+                                books.set(beforeComma, {
+                                    title: beforeComma,
+                                    authors: [afterComma],
+                                    highlights: []
+                                });
+                                console.log(`Found book: "${beforeComma}" by ${afterComma}`);
+                            }
                             continue;
                         }
-                        
-                        currentBook = fullTitle;
-                        
-                        if (!books.has(fullTitle)) {
-                            books.set(fullTitle, {
-                                title: fullTitle,
-                                authors: [author],
-                                highlights: []
-                            });
-                        }
-                        continue;
                     }
                 }
-                
+
                 // If we have a current book and this line looks like a highlight
-                if (currentBook && line.length > 20 && !line.includes(',') && books.has(currentBook)) {
+                if (currentBook && books.has(currentBook)) {
                     const book = books.get(currentBook)!;
-                    
+
                     // Skip very short lines or lines that look like metadata
-                    if (line.length < 30 || line.match(/^(page|location|added on)/i)) {
-                        continue;
+                    if (line.length >= 30 && !line.match(/^(page|location|added on)/i)) {
+                        book.highlights.push({
+                            quoteText: line,
+                            personalNotes: `Imported from Kindle highlights`
+                        });
+                        console.log(`  Added highlight to "${currentBook}": ${line.substring(0, 50)}...`);
                     }
-                    
-                    book.highlights.push({
-                        quoteText: line,
-                        personalNotes: `Imported from Kindle highlights`
-                    });
-                }
-                
-                // Reset current book after empty line or when we hit another book
-                if (!line || (line.includes(',') && line.length < 100)) {
-                    currentBook = null;
                 }
             }
-            
+
             const result = Array.from(books.values()).filter(book => book.highlights.length > 0);
             console.log(`Parsed ${result.length} books with highlights from Kindle file`);
-            
+
             return result;
         } catch (error) {
             console.error('Failed to parse Kindle highlights:', error);
@@ -202,7 +229,111 @@ export class DatabaseSeeder {
         }
     }
 
-    // Seed database with reading list and Kindle highlights
+    // Seed database with your complete reading data
+    static async seedWithUserData(kindleFilePath?: string, readingListPath?: string): Promise<void> {
+        console.log('Seeding database with your reading data...');
+
+        try {
+            // Check if data already exists
+            const existingBooks = BookQueries.getAllBooks();
+            if (existingBooks.length > 0) {
+                console.log('Database already contains data, skipping seed');
+                return;
+            }
+
+            // Parse Kindle highlights (completed books with highlights)
+            let parsedBooks: ParsedBook[] = [];
+            if (kindleFilePath) {
+                parsedBooks = this.parseKindleHighlights(kindleFilePath);
+            }
+
+            // Parse reading list (future books to read)
+            let futureBooks: CreateBookRequest[] = [];
+            if (readingListPath) {
+                futureBooks = this.parseReadingList(readingListPath);
+            }
+
+            // Prepare all books for cover fetching
+            const allBooksForCovers = [
+                ...parsedBooks.map(pb => ({ title: pb.title, authors: pb.authors })),
+                ...futureBooks.map(fb => ({ title: fb.title, authors: fb.authors }))
+            ];
+
+            // Fetch covers for all books
+            console.log('🎨 Fetching book covers...');
+            const coverResults = await CoverService.processCoversForBooks(allBooksForCovers);
+            const coverMap = new Map<string, CoverSearchResult>();
+            coverResults.forEach(result => {
+                coverMap.set(result.title, result);
+            });
+
+            let position = 1;
+
+            // First, create completed books from Kindle highlights
+            const completedBooks = [];
+            for (const parsedBook of parsedBooks) {
+                const coverResult = coverMap.get(parsedBook.title);
+                
+                // Create the book first
+                const bookData: CreateBookRequest = {
+                    title: parsedBook.title,
+                    authors: parsedBook.authors,
+                    position: position++
+                };
+                if (coverResult?.localPath) {
+                    bookData.coverImageUrl = coverResult.localPath;
+                }
+                const book = BookQueries.createBook(bookData);
+
+                // Then update it to completed status with additional data
+                const updatedBook = BookQueries.updateBook(book.id, {
+                    status: 'completed',
+                    progressPercentage: 100,
+                    completedDate: new Date().toISOString(),
+                    personalRating: Math.floor(Math.random() * 2) + 4 // 4 or 5 stars for completed books
+                });
+
+                console.log(`Created completed book: ${book.title} (${parsedBook.highlights.length} highlights)${coverResult?.localPath ? ' 🎨' : ''}`);
+                completedBooks.push(updatedBook);
+
+                // Add highlights
+                for (const highlightData of parsedBook.highlights) {
+                    const highlight = HighlightQueries.createHighlight(book.id, highlightData);
+                    console.log(`  Added highlight: ${highlight.quoteText.substring(0, 50)}...`);
+                }
+            }
+
+            // Then, create future books from reading list
+            const createdFutureBooks = [];
+            for (const bookData of futureBooks) {
+                const coverResult = coverMap.get(bookData.title);
+                
+                const finalBookData: CreateBookRequest = {
+                    ...bookData,
+                    position: position++
+                };
+                if (coverResult?.localPath) {
+                    finalBookData.coverImageUrl = coverResult.localPath;
+                }
+                
+                const book = BookQueries.createBook(finalBookData);
+                console.log(`Created future book: ${book.title}${coverResult?.localPath ? ' 🎨' : ''}`);
+                createdFutureBooks.push(book);
+            }
+
+            const totalCovers = coverResults.filter(r => r.localPath).length;
+            console.log(`✅ Seeding completed successfully!`);
+            console.log(`📚 Created ${completedBooks.length} completed books with highlights`);
+            console.log(`📖 Created ${createdFutureBooks.length} books in your reading queue`);
+            console.log(`🎨 Downloaded ${totalCovers}/${allBooksForCovers.length} book covers`);
+            console.log(`🎯 Total books in your library: ${completedBooks.length + createdFutureBooks.length}`);
+        } catch (error) {
+            console.error('Failed to seed with user data:', error);
+            throw error;
+        }
+    }
+
+    // Seed database with reading list and Kindle highlights (legacy method)
     static async seedWithReadingList(kindleFilePath?: string): Promise<void> {
         console.log('Seeding database with reading list...');
 
@@ -232,11 +363,11 @@ export class DatabaseSeeder {
 
             // Add highlights from Kindle file
             for (const book of createdBooks) {
-                const parsedBook = parsedBooks.find(pb => 
+                const parsedBook = parsedBooks.find(pb =>
                     pb.title.toLowerCase().includes(book.title.toLowerCase()) ||
                     book.title.toLowerCase().includes(pb.title.toLowerCase())
                 );
-                
+
                 if (parsedBook && parsedBook.highlights.length > 0) {
                     console.log(`Adding ${parsedBook.highlights.length} highlights for "${book.title}"`);
                     for (const highlightData of parsedBook.highlights) {
@@ -265,13 +396,28 @@ export class DatabaseSeeder {
                 return;
             }
 
+            // Fetch covers for sample books
+            console.log('🎨 Fetching book covers...');
+            const coverResults = await CoverService.processCoversForBooks(
+                this.SAMPLE_BOOKS.map(book => ({ title: book.title, authors: book.authors }))
+            );
+            const coverMap = new Map<string, CoverSearchResult>();
+            coverResults.forEach(result => {
+                coverMap.set(result.title, result);
+            });
+
             // Create sample books
             const createdBooks = this.SAMPLE_BOOKS.map((bookData, index) => {
-                const book = BookQueries.createBook({
+                const coverResult = coverMap.get(bookData.title);
+                const finalBookData: CreateBookRequest = {
                     ...bookData,
                     position: index + 1
-                });
-                console.log(`Created book: ${book.title}`);
+                };
+                if (coverResult?.localPath) {
+                    finalBookData.coverImageUrl = coverResult.localPath;
+                }
+                const book = BookQueries.createBook(finalBookData);
+                console.log(`Created book: ${book.title}${coverResult?.localPath ? ' 🎨' : ''}`);
                 return book;
             });
 
@@ -286,7 +432,9 @@ export class DatabaseSeeder {
                 }
             }
 
+            const totalCovers = coverResults.filter(r => r.localPath).length;
             console.log('Database seeding completed successfully');
+            console.log(`🎨 Downloaded ${totalCovers}/${this.SAMPLE_BOOKS.length} book covers`);
         } catch (error) {
             console.error('Failed to seed database:', error);
             throw error;
@@ -333,7 +481,7 @@ export class DatabaseSeeder {
     static createBackup(backupPath?: string): string {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const defaultBackupPath = backupPath || `./data/backup-${timestamp}.db`;
-        
+
         console.log(`Creating database backup: ${defaultBackupPath}`);
 
         try {
@@ -356,7 +504,7 @@ export class DatabaseSeeder {
             // Write backup file
             writeFileSync(defaultBackupPath, JSON.stringify(backupData, null, 2));
             console.log(`Database backup created successfully: ${defaultBackupPath}`);
-            
+
             return defaultBackupPath;
         } catch (error) {
             console.error('Failed to create database backup:', error);
@@ -447,7 +595,7 @@ export class DatabaseSeeder {
 
         try {
             const books = BookQueries.getAllBooks();
-            
+
             if (books.length === 0) {
                 console.log('No books found, skipping progress data');
                 return;
@@ -466,7 +614,7 @@ export class DatabaseSeeder {
             books.forEach((book, index) => {
                 const update = progressUpdates[index % progressUpdates.length];
                 if (!update) return;
-                
+
                 const updateData: any = {
                     status: update.status,
                     progressPercentage: update.progress

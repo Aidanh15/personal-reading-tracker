@@ -16,7 +16,8 @@
     "seed:reset-reading-list": "tsx src/scripts/seed.ts reset-reading-list",
     "seed:backup": "tsx src/scripts/seed.ts backup",
     "seed:add-progress": "tsx src/scripts/seed.ts add-progress",
-    "seed:parse-kindle": "tsx src/scripts/seed.ts parse-kindle"
+    "seed:parse-kindle": "tsx src/scripts/seed.ts parse-kindle",
+    "seed:user-data": "tsx src/scripts/seed.ts seed-user-data"
   },
   "keywords": [
     "reading",

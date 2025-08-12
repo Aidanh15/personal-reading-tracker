@@ -1,7 +1,7 @@
 
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { ArrowLeftIcon, BookOpenIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { useBooks } from '../contexts/BooksContext';
 import { useHighlights } from '../contexts/HighlightsContext';
 import { Book, Highlight, HighlightFormData, ProgressUpdateData } from '../types';
@@ -9,6 +9,7 @@ import ProgressTracker from '../components/UI/ProgressTracker';
 import Button from '../components/UI/Button';
 import LoadingSpinner from '../components/UI/LoadingSpinner';
 import HighlightManager from '../components/UI/HighlightManager';
+import BookCover from '../components/BookCover';
 
 function BookDetail() {
   const { id } = useParams<{ id: string }>();
@@ -112,9 +113,12 @@ function BookDetail() {
           <div className="card">
             <div className="flex items-start space-x-4">
               <div className="flex-shrink-0">
-                <div className="w-24 h-32 bg-gray-200 rounded-lg flex items-center justify-center">
-                  <BookOpenIcon className="h-8 w-8 text-gray-400" />
-                </div>
+                <BookCover
+                  title={book.title}
+                  authors={book.authors}
+                  {...(book.coverImageUrl && { coverImageUrl: book.coverImageUrl })}
+                  size="lg"
+                />
               </div>
               <div className="flex-1 space-y-2">
                 <div>

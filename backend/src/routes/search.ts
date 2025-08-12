@@ -1,7 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { validateQuery, schemas } from '../middleware/validation';
 import { Book, Highlight } from '../types';
-import { db } from '../database/connection';
+import { getDatabase } from '../database/connection';
 
 const router = express.Router();
 
@@ -121,11 +121,11 @@ function searchBooks(params: {
 
   // Add date range filter
   if (startDate) {
-    sql += ` AND createdAt >= ?`;
+    sql += ` AND created_at >= ?`;
     sqlParams.push(startDate);
   }
   if (endDate) {
-    sql += ` AND createdAt <= ?`;
+    sql += ` AND created_at <= ?`;
     sqlParams.push(endDate + 'T23:59:59.999Z'); // Include full end date
   }
 
@@ -136,13 +136,13 @@ function searchBooks(params: {
       break;
     case 'date':
     case 'dateAdded':
-      sql += ` ORDER BY createdAt ${sortOrder.toUpperCase()}`;
+      sql += ` ORDER BY created_at ${sortOrder.toUpperCase()}`;
       break;
     case 'progress':
-      sql += ` ORDER BY progressPercentage ${sortOrder.toUpperCase()}`;
+      sql += ` ORDER BY progress_percentage ${sortOrder.toUpperCase()}`;
       break;
     case 'status':
-      sql += ` ORDER BY status ${sortOrder.toUpperCase()}, createdAt DESC`;
+      sql += ` ORDER BY status ${sortOrder.toUpperCase()}, created_at DESC`;
       break;
     case 'position':
       sql += ` ORDER BY position ${sortOrder.toUpperCase()}`;
@@ -157,13 +157,13 @@ function searchBooks(params: {
             WHEN title LIKE ? THEN 2
             WHEN authors LIKE ? THEN 3
             ELSE 4
-          END ${sortOrder.toUpperCase()}, createdAt DESC`;
+          END ${sortOrder.toUpperCase()}, created_at DESC`;
         const exactMatch = query.trim();
         const startMatch = `${query.trim()}%`;
         const containsMatch = `%${query.trim()}%`;
         sqlParams.push(exactMatch, startMatch, containsMatch);
       } else {
-        sql += ` ORDER BY createdAt DESC`;
+        sql += ` ORDER BY created_at DESC`;
       }
       break;
   }
@@ -172,8 +172,28 @@ function searchBooks(params: {
   sql += ` LIMIT ? OFFSET ?`;
   sqlParams.push(limit, offset);
 
+  const db = getDatabase();
   const stmt = db.prepare(sql);
-  return stmt.all(...sqlParams) as Book[];
+  const results = stmt.all(...sqlParams);
+  
+  // Transform results to match Book interface (same as BookQueries)
+  return results.map((row: any) => ({
+    id: row.id,
+    title: row.title,
+    authors: JSON.parse(row.authors || '[]'),
+    position: row.position,
+    status: row.status,
+    progressPercentage: row.progress_percentage,
+    totalPages: row.total_pages,
+    currentPage: row.current_page,
+    startedDate: row.started_date,
+    completedDate: row.completed_date,
+    personalRating: row.personal_rating,
+    personalReview: row.personal_review,
+    coverImageUrl: row.cover_image_url,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  })) as Book[];
 }
 
 // Helper function to search highlights with advanced filtering and sorting
@@ -189,7 +209,7 @@ function searchHighlights(params: {
   let sql = `
     SELECT h.*, b.title as bookTitle, b.authors as bookAuthors
     FROM highlights h
-    JOIN books b ON h.bookId = b.id
+    JOIN books b ON h.book_id = b.id
     WHERE 1=1
   `;
   const sqlParams: any[] = [];
@@ -197,8 +217,8 @@ function searchHighlights(params: {
   // Add text search conditions
   if (query.trim()) {
     sql += ` AND (
-      h.quoteText LIKE ? OR 
-      h.personalNotes LIKE ? OR
+      h.quote_text LIKE ? OR 
+      h.personal_notes LIKE ? OR
       h.location LIKE ?
     )`;
     const searchTerm = `%${query.trim()}%`;
@@ -209,13 +229,13 @@ function searchHighlights(params: {
   switch (sortBy) {
     case 'date':
     case 'dateAdded':
-      sql += ` ORDER BY h.createdAt ${sortOrder.toUpperCase()}`;
+      sql += ` ORDER BY h.created_at ${sortOrder.toUpperCase()}`;
       break;
     case 'book':
-      sql += ` ORDER BY b.title ${sortOrder.toUpperCase()}, h.pageNumber ASC`;
+      sql += ` ORDER BY b.title ${sortOrder.toUpperCase()}, h.page_number ASC`;
       break;
     case 'page':
-      sql += ` ORDER BY h.pageNumber ${sortOrder.toUpperCase()}, h.createdAt DESC`;
+      sql += ` ORDER BY h.page_number ${sortOrder.toUpperCase()}, h.created_at DESC`;
       break;
     case 'relevance':
     default:
@@ -223,15 +243,15 @@ function searchHighlights(params: {
       if (query.trim()) {
         sql += ` ORDER BY 
           CASE 
-            WHEN h.quoteText LIKE ? THEN 1
-            WHEN h.personalNotes LIKE ? THEN 2
+            WHEN h.quote_text LIKE ? THEN 1
+            WHEN h.personal_notes LIKE ? THEN 2
             WHEN h.location LIKE ? THEN 3
             ELSE 4
-          END ${sortOrder.toUpperCase()}, h.createdAt DESC`;
+          END ${sortOrder.toUpperCase()}, h.created_at DESC`;
         const searchTerm = `%${query.trim()}%`;
         sqlParams.push(searchTerm, searchTerm, searchTerm);
       } else {
-        sql += ` ORDER BY h.createdAt DESC`;
+        sql += ` ORDER BY h.created_at DESC`;
       }
       break;
   }
@@ -240,20 +260,21 @@ function searchHighlights(params: {
   sql += ` LIMIT ? OFFSET ?`;
   sqlParams.push(limit, offset);
 
+  const db = getDatabase();
   const stmt = db.prepare(sql);
   const results = stmt.all(...sqlParams);
   
   // Transform results to include book info but maintain Highlight structure
   return results.map((row: any) => ({
     id: row.id,
-    bookId: row.bookId,
-    quoteText: row.quoteText,
-    pageNumber: row.pageNumber,
+    bookId: row.book_id,
+    quoteText: row.quote_text,
+    pageNumber: row.page_number,
     location: row.location,
-    personalNotes: row.personalNotes,
-    highlightDate: row.highlightDate,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+    personalNotes: row.personal_notes,
+    highlightDate: row.highlight_date,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
     // Additional context for search results
     bookTitle: row.bookTitle,
     bookAuthors: JSON.parse(row.bookAuthors || '[]')

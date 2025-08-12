@@ -60,9 +60,19 @@ WORKDIR /app
 COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/dist ./backend/dist
 COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/node_modules ./backend/node_modules
 COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/package.json ./backend/
+# Copy SQL schema files that are needed at runtime
+COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/src/database/*.sql ./backend/dist/database/
 
 # Copy built frontend static files
 COPY --from=frontend-builder --chown=nodejs:nodejs /app/frontend/dist ./frontend/dist
+
+# Copy data files for seeding
+COPY --chown=nodejs:nodejs KindleHighlights.txt ./KindleHighlights.txt
+COPY --chown=nodejs:nodejs reading-list.txt ./reading-list.txt
+
+# Copy startup script
+COPY --chown=nodejs:nodejs scripts/docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
 
 # Create directories for data persistence and logs
 RUN mkdir -p /app/data /app/logs && \
@@ -86,5 +96,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # Use dumb-init for proper signal handling and zombie reaping
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the application
-CMD ["node", "backend/dist/index.js"]
+# Start the application with seeding
+CMD ["/bin/sh", "./docker-entrypoint.sh"]

@@ -26,10 +26,11 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            styleSrc: ["'self'", "'unsafe-inline'"],
-            scriptSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
             imgSrc: ["'self'", "data:", "https:"],
             connectSrc: ["'self'"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com"],
         },
     },
 }));
@@ -46,11 +47,48 @@ app.use(express.urlencoded({ extended: true }));
 
 // Logging middleware
 if (NODE_ENV === 'production') {
-    app.use(morgan('combined'));
+    app.use(morgan('combined', {
+        skip: (req) => req.path === '/health' || req.path === '/api/health'
+    }));
 } else {
-    app.use(morgan('dev'));
+    app.use(morgan('dev', {
+        skip: (req) => req.path === '/health' || req.path === '/api/health'
+    }));
 }
 app.use(requestLogger);
+
+// Serve book covers with optimized caching
+const coversPath = path.join(__dirname, '../../data/covers');
+
+// Ensure covers directory exists
+if (!fs.existsSync(coversPath)) {
+    try {
+        fs.mkdirSync(coversPath, { recursive: true });
+        console.log(`📁 Created covers directory: ${coversPath}`);
+    } catch (error) {
+        console.error(`Failed to create covers directory: ${error}`);
+    }
+}
+
+// Set up static file serving for covers
+app.use('/covers', express.static(coversPath, {
+    maxAge: '7d', // 7 days cache for book covers
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, filePath) => {
+        // Set appropriate headers for images
+        if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
+            res.setHeader('Content-Type', 'image/jpeg');
+        } else if (filePath.endsWith('.png')) {
+            res.setHeader('Content-Type', 'image/png');
+        } else if (filePath.endsWith('.webp')) {
+            res.setHeader('Content-Type', 'image/webp');
+        }
+        res.setHeader('Cache-Control', 'public, max-age=604800'); // 7 days
+        res.setHeader('Vary', 'Accept-Encoding');
+    }
+}));
+console.log(`🎨 Serving book covers from: ${coversPath}`);
 
 // Serve static files in production with optimized caching
 if (NODE_ENV === 'production') {
@@ -93,7 +131,7 @@ if (NODE_ENV === 'production') {
 }
 
 // Enhanced health check endpoint with monitoring integration
-app.get('/health', async (_req, res) => {
+app.get('/api/health', async (_req, res) => {
     try {
         const metrics = await monitoring.collectMetrics();
         const healthStatus = monitoring.getHealthStatus();
@@ -138,7 +176,7 @@ app.get('/health', async (_req, res) => {
 });
 
 // Metrics endpoint for monitoring
-app.get('/metrics', async (_req, res) => {
+app.get('/api/metrics', async (_req, res) => {
     try {
         const metrics = await monitoring.collectMetrics();
         const history = monitoring.getMetricsHistory();
@@ -156,10 +194,138 @@ app.get('/metrics', async (_req, res) => {
     }
 });
 
+// Log management endpoints for Raspberry Pi storage optimization
+app.get('/api/logs/stats', (_req, res) => {
+    try {
+        const logStats = logger.getStats();
+        const logsDir = process.env['LOGS_PATH'] || path.join(process.cwd(), 'logs');
+        
+        res.json({
+            directory: logsDir,
+            totalFiles: logStats.fileCount,
+            totalSizeMB: Math.round(logStats.totalSize / 1024 / 1024 * 100) / 100,
+            oldestLog: logStats.oldestLog,
+            rotationEnabled: process.env['NODE_ENV'] === 'production',
+            message: 'Log statistics for storage monitoring'
+        });
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        logger.error('Failed to get log stats', { error: errorMessage }, 'LOGS');
+        res.status(500).json({ error: 'Failed to get log statistics' });
+    }
+});
+
+// Force log rotation endpoint (useful for Pi maintenance)
+app.post('/api/logs/rotate', (_req, res) => {
+    try {
+        logger.rotateLogs();
+        const logStats = logger.getStats();
+        
+        res.json({
+            message: 'Log rotation completed',
+            totalFiles: logStats.fileCount,
+            totalSizeMB: Math.round(logStats.totalSize / 1024 / 1024 * 100) / 100,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        logger.error('Failed to rotate logs', { error: errorMessage }, 'LOGS');
+        res.status(500).json({ error: 'Log rotation failed' });
+    }
+});
+
 // API routes
 app.use('/api/books', booksRouter);
 app.use('/api/highlights', highlightsRouter);
 app.use('/api/search', searchRouter);
+
+// Test endpoint for Google Images search
+app.get('/api/test-cover/:bookId', async (req, res) => {
+    try {
+        const { CoverService } = await import('./services/coverService');
+        const bookId = parseInt(req.params.bookId);
+        
+        // Get book details from database (simplified for testing)
+        const { getDatabase } = await import('./database/connection');
+        const db = getDatabase();
+        const book = db.prepare('SELECT title, authors FROM books WHERE id = ?').get(bookId) as any;
+        
+        if (!book) {
+            return res.status(404).json({ error: 'Book not found' });
+        }
+        
+        const authors = JSON.parse(book.authors);
+        console.log(`🧪 Testing cover search for: "${book.title}" by ${authors.join(', ')}`);
+        
+        const result = await CoverService.searchBookCover(book.title, authors);
+        
+        return res.json({
+            book: { title: book.title, authors },
+            result: result,
+            success: !!result.coverUrl
+        });
+    } catch (error) {
+        console.error('Test cover search failed:', error);
+        return res.status(500).json({ error: 'Test failed', details: error instanceof Error ? error.message : 'Unknown error' });
+    }
+});
+
+// Update covers for books that don't have them
+app.post('/api/update-missing-covers', async (_req, res) => {
+    try {
+        const { CoverService } = await import('./services/coverService');
+        const { getDatabase } = await import('./database/connection');
+        const db = getDatabase();
+        
+        // Get books without covers
+        const booksWithoutCovers = db.prepare('SELECT id, title, authors FROM books WHERE cover_image_url IS NULL').all() as any[];
+        
+        if (booksWithoutCovers.length === 0) {
+            return res.json({ message: 'All books already have covers!', updated: 0 });
+        }
+        
+        console.log(`🎨 Updating covers for ${booksWithoutCovers.length} books without covers...`);
+        
+        let updated = 0;
+        const results = [];
+        
+        for (const book of booksWithoutCovers) {
+            try {
+                const authors = JSON.parse(book.authors);
+                console.log(`Searching cover for: "${book.title}" by ${authors.join(', ')}`);
+                
+                const coverResult = await CoverService.getCoverForBook(book.title, authors);
+                
+                if (coverResult.localPath) {
+                    // Update the book with the cover
+                    db.prepare('UPDATE books SET cover_image_url = ? WHERE id = ?').run(coverResult.localPath, book.id);
+                    updated++;
+                    console.log(`✅ Updated cover for: ${book.title}`);
+                    results.push({ id: book.id, title: book.title, success: true, coverUrl: coverResult.localPath });
+                } else {
+                    console.log(`❌ No cover found for: ${book.title}`);
+                    results.push({ id: book.id, title: book.title, success: false });
+                }
+                
+                // Small delay to be respectful to APIs
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (error) {
+                console.error(`Failed to update cover for "${book.title}":`, error);
+                results.push({ id: book.id, title: book.title, success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+            }
+        }
+        
+        return res.json({
+            message: `Updated covers for ${updated}/${booksWithoutCovers.length} books`,
+            updated,
+            total: booksWithoutCovers.length,
+            results
+        });
+    } catch (error) {
+        console.error('Update missing covers failed:', error);
+        return res.status(500).json({ error: 'Update failed', details: error instanceof Error ? error.message : 'Unknown error' });
+    }
+});
 
 // Serve React app for all non-API routes in production
 if (NODE_ENV === 'production') {
@@ -207,15 +373,15 @@ const server = app.listen(PORT, () => {
     }, 'SERVER');
 
     console.log(`🚀 Personal Reading Tracker API running on port ${PORT}`);
-    console.log(`📚 Health check: http://localhost:${PORT}/health`);
-    console.log(`📊 Metrics: http://localhost:${PORT}/metrics`);
+    console.log(`📚 Health check: http://localhost:${PORT}/api/health`);
+    console.log(`📊 Metrics: http://localhost:${PORT}/api/metrics`);
     console.log(`🌍 Environment: ${NODE_ENV}`);
     console.log(`💾 Database: ${process.env['DATABASE_PATH'] || './data/reading-tracker.db'}`);
 
-    // Start monitoring service
+    // Start monitoring service with reduced frequency for Pi
     if (NODE_ENV === 'production') {
-        monitoring.startMonitoring(1); // Collect metrics every minute
-        logger.info('Monitoring service started', { interval: '1 minute' }, 'MONITORING');
+        monitoring.startMonitoring(5); // Collect metrics every 5 minutes
+        logger.info('Monitoring service started', { interval: '5 minutes' }, 'MONITORING');
     }
 });
 

@@ -22,6 +22,15 @@ async function main() {
                 await DatabaseSeeder.seedWithReadingList(kindleFile);
                 break;
 
+            case 'seed-user-data':
+                const kindleFilePath = args[1] || join(process.cwd(), '../KindleHighlights.txt');
+                const readingListPath = args[2] || join(process.cwd(), '../reading-list.txt');
+                console.log('🎯 Seeding database with your complete reading data...');
+                console.log(`Using Kindle highlights file: ${kindleFilePath}`);
+                console.log(`Using reading list file: ${readingListPath}`);
+                await DatabaseSeeder.seedWithUserData(kindleFilePath, readingListPath);
+                break;
+
             case 'clear':
                 console.log('🧹 Clearing database...');
                 DatabaseSeeder.clearDatabase();
@@ -79,19 +88,21 @@ async function main() {
 Usage: tsx seed.ts <command> [options]
 
 Commands:
-  seed                    Seed database with sample data
-  seed-reading-list [file] Seed with reading list and Kindle highlights
-  clear                   Clear all data from database
-  reset                   Clear and seed with sample data
-  reset-reading-list [file] Clear and seed with reading list
-  backup [path]           Create database backup
-  restore <path>          Restore database from backup
-  add-progress            Add sample progress data to existing books
-  parse-kindle [file]     Parse and display Kindle highlights (dry run)
+  seed                         Seed database with sample data
+  seed-user-data [kindle] [list] Seed with your complete reading data (recommended)
+  seed-reading-list [file]     Seed with reading list and Kindle highlights
+  clear                        Clear all data from database
+  reset                        Clear and seed with sample data
+  reset-reading-list [file]    Clear and seed with reading list
+  backup [path]                Create database backup
+  restore <path>               Restore database from backup
+  add-progress                 Add sample progress data to existing books
+  parse-kindle [file]          Parse and display Kindle highlights (dry run)
 
 Examples:
+  tsx seed.ts seed-user-data
+  tsx seed.ts seed-user-data ./KindleHighlights.txt ./reading-list.txt
   tsx seed.ts seed-reading-list
-  tsx seed.ts seed-reading-list ./path/to/KindleHighlights.txt
   tsx seed.ts backup ./backups/my-backup.json
   tsx seed.ts restore ./backups/my-backup.json
   tsx seed.ts parse-kindle

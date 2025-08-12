@@ -22,6 +22,14 @@ RUN npm run build
 # Stage 2: Build backend
 FROM --platform=linux/arm64 node:20-alpine AS backend-builder
 
+# Install build dependencies for native modules (better-sqlite3)
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    sqlite-dev \
+    && ln -sf python3 /usr/bin/python
+
 # Set working directory
 WORKDIR /app/backend
 
@@ -63,6 +71,8 @@ WORKDIR /app
 COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/dist ./backend/dist
 COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/node_modules ./backend/node_modules
 COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/package.json ./backend/
+# Copy SQL schema files that aren't compiled
+COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/src/database/*.sql ./backend/dist/database/
 
 # Copy built frontend static files
 COPY --from=frontend-builder --chown=nodejs:nodejs /app/frontend/dist ./frontend/dist
@@ -73,23 +83,23 @@ RUN mkdir -p /app/data /app/logs /app/tmp && \
 
 # Set environment variables optimized for Raspberry Pi
 ENV NODE_ENV=production \
-    PORT=3000 \
+    PORT=3003 \
     DATABASE_PATH=/app/data/reading-tracker.db \
-    NODE_OPTIONS="--max-old-space-size=256 --gc-interval=100" \
+    NODE_OPTIONS="--max-old-space-size=256 --max-semi-space-size=32" \
     UV_THREADPOOL_SIZE=4
 
 # Switch to non-root user
 USER nodejs
 
 # Expose application port
-EXPOSE 3000
+EXPOSE 3003
 
 # Add comprehensive health check optimized for Pi
 HEALTHCHECK --interval=60s --timeout=15s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
+  CMD curl -f http://localhost:3003/health || exit 1
 
 # Use tini for proper signal handling and zombie reaping (better for Pi)
 ENTRYPOINT ["tini", "--"]
 
 # Start the application with memory optimizations
-CMD ["node", "--max-old-space-size=256", "--gc-interval=100", "backend/dist/index.js"]
+CMD ["node", "--max-old-space-size=256", "--max-semi-space-size=32", "backend/dist/index.js"]

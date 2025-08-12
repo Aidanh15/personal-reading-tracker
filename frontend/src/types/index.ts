@@ -12,6 +12,7 @@ export interface Book {
   completedDate?: string;
   personalRating?: number;
   personalReview?: string;
+  coverImageUrl?: string;
   createdAt: string;
   updatedAt: string;
 }

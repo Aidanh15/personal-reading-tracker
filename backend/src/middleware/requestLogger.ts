@@ -1,6 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 
 export const requestLogger = (req: Request, res: Response, next: NextFunction): void => {
+  // Skip logging for health check endpoints to reduce log noise
+  if (req.path === '/health' || req.path === '/api/health') {
+    next();
+    return;
+  }
+
   const startTime = Date.now();
   
   // Log request start

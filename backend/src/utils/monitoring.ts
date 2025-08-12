@@ -325,7 +325,7 @@ export class MonitoringService {
         return result;
     }
 
-    public startMonitoring(intervalMinutes: number = 1): void {
+    public startMonitoring(intervalMinutes: number = 5): void {
         const interval = intervalMinutes * 60 * 1000;
 
         logger.info(`Starting monitoring service (interval: ${intervalMinutes}m)`, {
@@ -336,7 +336,7 @@ export class MonitoringService {
         // Collect initial metrics
         this.collectMetrics();
 
-        // Set up periodic collection
+        // Set up periodic collection with reduced frequency for Pi
         setInterval(async () => {
             try {
                 await this.collectMetrics();
@@ -347,10 +347,12 @@ export class MonitoringService {
             }
         }, interval);
 
-        // Log rotation for alerts
+        // Log rotation for alerts and application logs
         if (process.env['NODE_ENV'] === 'production') {
             setInterval(() => {
                 this.rotateAlertsLog();
+                // Trigger application log rotation
+                logger.rotateLogs();
             }, 24 * 60 * 60 * 1000); // Daily
         }
     }
