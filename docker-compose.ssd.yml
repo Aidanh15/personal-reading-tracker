@@ -4,12 +4,7 @@
 
 services:
   reading-tracker:
-    build:
-      context: .
-      dockerfile: Dockerfile.rpi
-      target: production
-      platforms:
-        - linux/arm64
+    image: personal-reading-tracker:latest
     container_name: personal-reading-tracker-ssd
     ports:
       - "${APP_PORT:-3003}:3003"

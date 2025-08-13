@@ -119,9 +119,10 @@ playwright-report/
 playwright/.cache/
 
 # Personal files that shouldn't be committed
-KindleHighlights.txt
 personal-notes.md
 reading-list.json
+
+# Note: KindleHighlights.txt and reading-list.txt are needed for database seeding
 
 # Raspberry Pi specific
 *.img
