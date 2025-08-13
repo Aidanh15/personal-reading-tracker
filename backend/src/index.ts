@@ -262,24 +262,68 @@ app.get('/api/test-cover/:bookId', async (req, res) => {
 app.get('/api/cover-status', async (_req, res) => {
     try {
         const { getDatabase } = await import('./database/connection');
+        const fs = await import('fs');
+        const path = await import('path');
+        
         const db = getDatabase();
-
         const allBooks = db.prepare('SELECT id, title, authors, cover_image_url FROM books ORDER BY id').all() as any[];
+        
+        const coversDir = path.join(process.cwd(), 'data', 'covers');
         
         const status = {
             total: allBooks.length,
-            withCovers: 0,
+            withValidCovers: 0,
+            withInvalidCovers: 0,
             withoutCovers: 0,
-            books: allBooks.map(book => ({
-                id: book.id,
-                title: book.title,
-                authors: JSON.parse(book.authors || '[]'),
-                coverStatus: book.cover_image_url ? 'has_cover' : 'no_cover',
-                coverUrl: book.cover_image_url
-            }))
+            books: allBooks.map(book => {
+                let coverStatus = 'no_cover';
+                let fileExists = false;
+                let fileSize = 0;
+                
+                if (book.cover_image_url) {
+                    // Check if it's an empty filename like "/covers/.jpg"
+                    if (book.cover_image_url === '/covers/.jpg' || book.cover_image_url.endsWith('/.jpg')) {
+                        coverStatus = 'invalid_url';
+                    } else {
+                        // Extract filename from URL like "/covers/filename.jpg"
+                        const filename = book.cover_image_url.replace('/covers/', '');
+                        const filePath = path.join(coversDir, filename);
+                        
+                        try {
+                            if (fs.existsSync(filePath)) {
+                                fileExists = true;
+                                const stats = fs.statSync(filePath);
+                                fileSize = stats.size;
+                                
+                                // Consider files smaller than 1KB as invalid (likely error pages)
+                                if (fileSize > 1024) {
+                                    coverStatus = 'valid_cover';
+                                } else {
+                                    coverStatus = 'invalid_file';
+                                }
+                            } else {
+                                coverStatus = 'file_missing';
+                            }
+                        } catch (error) {
+                            coverStatus = 'file_error';
+                        }
+                    }
+                }
+                
+                return {
+                    id: book.id,
+                    title: book.title,
+                    authors: JSON.parse(book.authors || '[]'),
+                    coverStatus,
+                    coverUrl: book.cover_image_url,
+                    fileExists,
+                    fileSize
+                };
+            })
         };
 
-        status.withCovers = status.books.filter(b => b.coverStatus === 'has_cover').length;
+        status.withValidCovers = status.books.filter(b => b.coverStatus === 'valid_cover').length;
+        status.withInvalidCovers = status.books.filter(b => ['invalid_url', 'invalid_file', 'file_missing', 'file_error'].includes(b.coverStatus)).length;
         status.withoutCovers = status.books.filter(b => b.coverStatus === 'no_cover').length;
 
         res.json(status);
@@ -301,12 +345,12 @@ app.post('/api/update-missing-covers', async (_req, res) => {
         console.log(`📊 Database analysis: ${allBooks.length} total books`);
         
         // Log some examples of what's in cover_image_url
-        const sampleBooks = allBooks.slice(0, 10);
+        const sampleBooks = allBooks.slice(0, 50);
         sampleBooks.forEach(book => {
             console.log(`  Book ${book.id}: "${book.title}" -> cover: "${book.cover_image_url}"`);
         });
 
-        // Get books without covers (including NULL, empty string, 'null', 'undefined')
+        // Get books without covers or with invalid cover URLs
         const booksWithoutCovers = db.prepare(`
             SELECT id, title, authors FROM books 
             WHERE cover_image_url IS NULL 
@@ -314,7 +358,39 @@ app.post('/api/update-missing-covers', async (_req, res) => {
                OR cover_image_url = 'null' 
                OR cover_image_url = 'undefined'
                OR cover_image_url LIKE '%undefined%'
+               OR cover_image_url = '/covers/.jpg'
+               OR cover_image_url LIKE '/covers/%.jpg'
         `).all() as any[];
+
+        // Filter out books that have valid cover files
+        const fs = await import('fs');
+        const path = await import('path');
+        const coversDir = path.join(process.cwd(), 'data', 'covers');
+        
+        const booksNeedingCovers = booksWithoutCovers.filter(book => {
+            if (!book.cover_image_url || book.cover_image_url === '/covers/.jpg') {
+                return true; // Definitely needs a cover
+            }
+            
+            // Check if the file actually exists and is valid
+            const filename = book.cover_image_url.replace('/covers/', '');
+            const filePath = path.join(coversDir, filename);
+            
+            try {
+                if (!fs.existsSync(filePath)) {
+                    return true; // File doesn't exist, needs cover
+                }
+                
+                const stats = fs.statSync(filePath);
+                if (stats.size < 1024) {
+                    return true; // File too small, likely invalid
+                }
+                
+                return false; // File exists and seems valid
+            } catch {
+                return true; // Error checking file, assume needs cover
+            }
+        });
 
         console.log(`📊 Found ${booksWithoutCovers.length} books without covers`);
 
