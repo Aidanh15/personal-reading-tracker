@@ -193,7 +193,11 @@ export class CoverService {
                 .replace(/[^\w\s-]/g, '')
                 .replace(/\s+/g, '_')
                 .toLowerCase();
-            const filename = `${safeTitle}.jpg`;
+            const safeAuthor = (coverResult.authors[0] || '')
+                .replace(/[^\w\s-]/g, '')
+                .replace(/\s+/g, '_')
+                .toLowerCase();
+            const filename = safeAuthor ? `${safeTitle}_by_${safeAuthor}.jpg` : `${safeTitle}.jpg`;
             const localPath = join(this.COVERS_DIR, filename);
 
             if (existsSync(localPath)) {
@@ -302,7 +306,7 @@ export class CoverService {
                         return;
                     }
                 }
-                
+
                 if (response.statusCode !== 200) {
                     reject(new Error(`HTTP ${response.statusCode}`));
                     return;
@@ -328,7 +332,7 @@ export class CoverService {
             const client = url.startsWith('https:') ? https : http;
             const request = client.get(url, (response) => {
                 // Accept both 200 (direct image) and 302 (redirect to image)
-                if ((response.statusCode === 200 || response.statusCode === 302) && 
+                if ((response.statusCode === 200 || response.statusCode === 302) &&
                     response.headers['content-type']?.startsWith('image/')) {
                     resolve(true);
                 } else {

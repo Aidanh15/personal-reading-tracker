@@ -258,6 +258,37 @@ app.get('/api/test-cover/:bookId', async (req, res) => {
     }
 });
 
+// Check cover status for all books
+app.get('/api/cover-status', async (_req, res) => {
+    try {
+        const { getDatabase } = await import('./database/connection');
+        const db = getDatabase();
+
+        const allBooks = db.prepare('SELECT id, title, authors, cover_image_url FROM books ORDER BY id').all() as any[];
+        
+        const status = {
+            total: allBooks.length,
+            withCovers: 0,
+            withoutCovers: 0,
+            books: allBooks.map(book => ({
+                id: book.id,
+                title: book.title,
+                authors: JSON.parse(book.authors || '[]'),
+                coverStatus: book.cover_image_url ? 'has_cover' : 'no_cover',
+                coverUrl: book.cover_image_url
+            }))
+        };
+
+        status.withCovers = status.books.filter(b => b.coverStatus === 'has_cover').length;
+        status.withoutCovers = status.books.filter(b => b.coverStatus === 'no_cover').length;
+
+        res.json(status);
+    } catch (error) {
+        console.error('Cover status check failed:', error);
+        res.status(500).json({ error: 'Status check failed', details: error instanceof Error ? error.message : 'Unknown error' });
+    }
+});
+
 // Update covers for books that don't have them
 app.post('/api/update-missing-covers', async (_req, res) => {
     try {
@@ -265,8 +296,15 @@ app.post('/api/update-missing-covers', async (_req, res) => {
         const { getDatabase } = await import('./database/connection');
         const db = getDatabase();
 
-        // Get books without covers
-        const booksWithoutCovers = db.prepare('SELECT id, title, authors FROM books WHERE cover_image_url IS NULL').all() as any[];
+        // Get books without covers (including NULL, empty string, 'null', 'undefined')
+        const booksWithoutCovers = db.prepare(`
+            SELECT id, title, authors FROM books 
+            WHERE cover_image_url IS NULL 
+               OR cover_image_url = '' 
+               OR cover_image_url = 'null' 
+               OR cover_image_url = 'undefined'
+               OR cover_image_url LIKE '%undefined%'
+        `).all() as any[];
 
         if (booksWithoutCovers.length === 0) {
             return res.json({ message: 'All books already have covers!', updated: 0 });
