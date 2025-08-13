@@ -296,6 +296,16 @@ app.post('/api/update-missing-covers', async (_req, res) => {
         const { getDatabase } = await import('./database/connection');
         const db = getDatabase();
 
+        // First, let's see what we have in the database
+        const allBooks = db.prepare('SELECT id, title, cover_image_url FROM books ORDER BY id').all() as any[];
+        console.log(`📊 Database analysis: ${allBooks.length} total books`);
+        
+        // Log some examples of what's in cover_image_url
+        const sampleBooks = allBooks.slice(0, 10);
+        sampleBooks.forEach(book => {
+            console.log(`  Book ${book.id}: "${book.title}" -> cover: "${book.cover_image_url}"`);
+        });
+
         // Get books without covers (including NULL, empty string, 'null', 'undefined')
         const booksWithoutCovers = db.prepare(`
             SELECT id, title, authors FROM books 
@@ -306,8 +316,15 @@ app.post('/api/update-missing-covers', async (_req, res) => {
                OR cover_image_url LIKE '%undefined%'
         `).all() as any[];
 
+        console.log(`📊 Found ${booksWithoutCovers.length} books without covers`);
+
         if (booksWithoutCovers.length === 0) {
-            return res.json({ message: 'All books already have covers!', updated: 0 });
+            return res.json({ 
+                message: 'All books already have covers!', 
+                updated: 0,
+                totalBooks: allBooks.length,
+                sampleBooks: sampleBooks.map(b => ({ id: b.id, title: b.title, coverUrl: b.cover_image_url }))
+            });
         }
 
         console.log(`🎨 Updating covers for ${booksWithoutCovers.length} books without covers...`);
