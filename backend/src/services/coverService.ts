@@ -293,6 +293,16 @@ export class CoverService {
         return new Promise((resolve, reject) => {
             const client = url.startsWith('https:') ? https : http;
             const request = client.get(url, (response) => {
+                // Handle redirects
+                if (response.statusCode === 302 || response.statusCode === 301) {
+                    const redirectUrl = response.headers.location;
+                    if (redirectUrl) {
+                        console.log(`  Following redirect to: ${redirectUrl}`);
+                        this.downloadFile(redirectUrl, localPath).then(resolve).catch(reject);
+                        return;
+                    }
+                }
+                
                 if (response.statusCode !== 200) {
                     reject(new Error(`HTTP ${response.statusCode}`));
                     return;
