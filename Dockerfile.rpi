@@ -10,11 +10,8 @@ WORKDIR /app/frontend
 # Copy package files first for better caching
 COPY frontend/package*.json ./
 
-# Install dependencies with ARM64 optimizations and verification
-RUN npm ci --prefer-offline --no-audit --no-fund && \
-    echo "Verifying vite installation:" && \
-    ls -la node_modules/.bin/vite || echo "Vite not found, installing manually..." && \
-    test -f node_modules/.bin/vite || npm install vite@^5.0.8
+# Install dependencies with ARM64 optimizations
+RUN npm install --prefer-offline --no-audit --no-fund
 
 # Copy frontend source code
 COPY frontend/ ./
