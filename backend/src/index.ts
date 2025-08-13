@@ -264,22 +264,28 @@ app.get('/api/cover-status', async (_req, res) => {
         const { getDatabase } = await import('./database/connection');
         const fs = await import('fs');
         const path = await import('path');
-        
+
         const db = getDatabase();
         const allBooks = db.prepare('SELECT id, title, authors, cover_image_url FROM books ORDER BY id').all() as any[];
-        
+
         const coversDir = path.join(process.cwd(), 'data', 'covers');
-        
+        console.log(`🔍 Checking covers directory: ${coversDir}`);
+        console.log(`🔍 Directory exists: ${fs.existsSync(coversDir)}`);
+
         const status = {
             total: allBooks.length,
             withValidCovers: 0,
             withInvalidCovers: 0,
             withoutCovers: 0,
+            debugInfo: {
+                coversDir,
+                dirExists: fs.existsSync(coversDir)
+            },
             books: allBooks.map(book => {
                 let coverStatus = 'no_cover';
                 let fileExists = false;
                 let fileSize = 0;
-                
+
                 if (book.cover_image_url) {
                     // Check if it's an empty filename like "/covers/.jpg"
                     if (book.cover_image_url === '/covers/.jpg' || book.cover_image_url.endsWith('/.jpg')) {
@@ -288,13 +294,13 @@ app.get('/api/cover-status', async (_req, res) => {
                         // Extract filename from URL like "/covers/filename.jpg"
                         const filename = book.cover_image_url.replace('/covers/', '');
                         const filePath = path.join(coversDir, filename);
-                        
+
                         try {
                             if (fs.existsSync(filePath)) {
                                 fileExists = true;
                                 const stats = fs.statSync(filePath);
                                 fileSize = stats.size;
-                                
+
                                 // Consider files smaller than 1KB as invalid (likely error pages)
                                 if (fileSize > 1024) {
                                     coverStatus = 'valid_cover';
@@ -309,7 +315,7 @@ app.get('/api/cover-status', async (_req, res) => {
                         }
                     }
                 }
-                
+
                 return {
                     id: book.id,
                     title: book.title,
@@ -343,7 +349,7 @@ app.post('/api/update-missing-covers', async (_req, res) => {
         // First, let's see what we have in the database
         const allBooks = db.prepare('SELECT id, title, cover_image_url FROM books ORDER BY id').all() as any[];
         console.log(`📊 Database analysis: ${allBooks.length} total books`);
-        
+
         // Log some examples of what's in cover_image_url
         const sampleBooks = allBooks.slice(0, 50);
         sampleBooks.forEach(book => {
@@ -366,26 +372,26 @@ app.post('/api/update-missing-covers', async (_req, res) => {
         const fs = await import('fs');
         const path = await import('path');
         const coversDir = path.join(process.cwd(), 'data', 'covers');
-        
+
         const booksNeedingCovers = booksWithoutCovers.filter(book => {
             if (!book.cover_image_url || book.cover_image_url === '/covers/.jpg') {
                 return true; // Definitely needs a cover
             }
-            
+
             // Check if the file actually exists and is valid
             const filename = book.cover_image_url.replace('/covers/', '');
             const filePath = path.join(coversDir, filename);
-            
+
             try {
                 if (!fs.existsSync(filePath)) {
                     return true; // File doesn't exist, needs cover
                 }
-                
+
                 const stats = fs.statSync(filePath);
                 if (stats.size < 1024) {
                     return true; // File too small, likely invalid
                 }
-                
+
                 return false; // File exists and seems valid
             } catch {
                 return true; // Error checking file, assume needs cover
@@ -395,8 +401,8 @@ app.post('/api/update-missing-covers', async (_req, res) => {
         console.log(`📊 Found ${booksWithoutCovers.length} books without covers`);
 
         if (booksWithoutCovers.length === 0) {
-            return res.json({ 
-                message: 'All books already have covers!', 
+            return res.json({
+                message: 'All books already have covers!',
                 updated: 0,
                 totalBooks: allBooks.length,
                 sampleBooks: sampleBooks.map(b => ({ id: b.id, title: b.title, coverUrl: b.cover_image_url }))
