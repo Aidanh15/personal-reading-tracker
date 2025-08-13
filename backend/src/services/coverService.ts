@@ -216,6 +216,30 @@ export class CoverService {
         return searchResult;
     }
 
+    static async processCoversForBooks(books: Array<{ title: string; authors: string[] }>): Promise<CoverSearchResult[]> {
+        console.log(`Processing covers for ${books.length} books...`);
+
+        const results: CoverSearchResult[] = [];
+
+        for (const book of books) {
+            try {
+                const result = await this.getCoverForBook(book.title, book.authors);
+                results.push(result);
+
+                // Add small delay to be respectful to the APIs
+                await this.delay(500);
+            } catch (error) {
+                console.error(`Failed to process cover for "${book.title}":`, error);
+                results.push({ title: book.title, authors: book.authors });
+            }
+        }
+
+        const successCount = results.filter(r => r.localPath).length;
+        console.log(`Successfully processed ${successCount}/${books.length} book covers`);
+
+        return results;
+    }
+
     private static makeHttpRequest(url: string): Promise<string> {
         return new Promise((resolve, reject) => {
             const client = url.startsWith('https:') ? https : http;
@@ -306,6 +330,10 @@ export class CoverService {
                 reject(new Error('Timeout'));
             });
         });
+    }
+
+    private static delay(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     static cleanupOldCovers(): void {
