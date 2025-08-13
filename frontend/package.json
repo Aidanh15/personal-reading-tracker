@@ -1,7 +1,7 @@
 {
   "name": "personal-reading-tracker-frontend",
   "version": "1.0.0",
-  "description": "Frontend for Personal Reading Tracker",
+  "description": "Frontend for Personal Reading Tracker - Debug Build",
   "type": "module",
   "scripts": {
     "dev": "vite",
