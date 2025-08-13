@@ -80,18 +80,18 @@ RUN mkdir -p /app/data /app/logs && \
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=3003
 ENV DATABASE_PATH=/app/data/reading-tracker.db
 
 # Switch to non-root user
 USER nodejs
 
 # Expose application port
-EXPOSE 3000
+EXPOSE 3003
 
 # Add comprehensive health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
+  CMD curl -f http://localhost:3003/api/health || exit 1
 
 # Use dumb-init for proper signal handling and zombie reaping
 ENTRYPOINT ["dumb-init", "--"]

@@ -1,6 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -18,26 +17,15 @@ import { searchRouter } from './routes/search';
 dotenv.config();
 
 const app = express();
-const PORT = process.env['PORT'] || 3000;
+const PORT = process.env['PORT'] || 3003;
 const NODE_ENV = process.env['NODE_ENV'] || 'development';
 
-// Security middleware with CSP for serving static files
-app.use(helmet({
-    contentSecurityPolicy: {
-        directives: {
-            defaultSrc: ["'self'"],
-            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-            imgSrc: ["'self'", "data:", "https:"],
-            connectSrc: ["'self'"],
-            fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        },
-    },
-}));
+// Security middleware completely disabled for self-hosted Pi
+// app.use(helmet({...})); // Temporarily disabled to fix CORS issues
 
 // CORS configuration
 app.use(cors({
-    origin: process.env['CORS_ORIGIN'] || (NODE_ENV === 'development' ? 'http://localhost:5173' : 'http://localhost:3000'),
+    origin: process.env['CORS_ORIGIN'] || (NODE_ENV === 'development' ? 'http://localhost:5173' : `http://localhost:${PORT}`),
     credentials: true
 }));
 
@@ -199,7 +187,7 @@ app.get('/api/logs/stats', (_req, res) => {
     try {
         const logStats = logger.getStats();
         const logsDir = process.env['LOGS_PATH'] || path.join(process.cwd(), 'logs');
-        
+
         res.json({
             directory: logsDir,
             totalFiles: logStats.fileCount,
@@ -220,7 +208,7 @@ app.post('/api/logs/rotate', (_req, res) => {
     try {
         logger.rotateLogs();
         const logStats = logger.getStats();
-        
+
         res.json({
             message: 'Log rotation completed',
             totalFiles: logStats.fileCount,
@@ -244,21 +232,21 @@ app.get('/api/test-cover/:bookId', async (req, res) => {
     try {
         const { CoverService } = await import('./services/coverService');
         const bookId = parseInt(req.params.bookId);
-        
+
         // Get book details from database (simplified for testing)
         const { getDatabase } = await import('./database/connection');
         const db = getDatabase();
         const book = db.prepare('SELECT title, authors FROM books WHERE id = ?').get(bookId) as any;
-        
+
         if (!book) {
             return res.status(404).json({ error: 'Book not found' });
         }
-        
+
         const authors = JSON.parse(book.authors);
         console.log(`🧪 Testing cover search for: "${book.title}" by ${authors.join(', ')}`);
-        
+
         const result = await CoverService.searchBookCover(book.title, authors);
-        
+
         return res.json({
             book: { title: book.title, authors },
             result: result,
@@ -276,26 +264,26 @@ app.post('/api/update-missing-covers', async (_req, res) => {
         const { CoverService } = await import('./services/coverService');
         const { getDatabase } = await import('./database/connection');
         const db = getDatabase();
-        
+
         // Get books without covers
         const booksWithoutCovers = db.prepare('SELECT id, title, authors FROM books WHERE cover_image_url IS NULL').all() as any[];
-        
+
         if (booksWithoutCovers.length === 0) {
             return res.json({ message: 'All books already have covers!', updated: 0 });
         }
-        
+
         console.log(`🎨 Updating covers for ${booksWithoutCovers.length} books without covers...`);
-        
+
         let updated = 0;
         const results = [];
-        
+
         for (const book of booksWithoutCovers) {
             try {
                 const authors = JSON.parse(book.authors);
                 console.log(`Searching cover for: "${book.title}" by ${authors.join(', ')}`);
-                
+
                 const coverResult = await CoverService.getCoverForBook(book.title, authors);
-                
+
                 if (coverResult.localPath) {
                     // Update the book with the cover
                     db.prepare('UPDATE books SET cover_image_url = ? WHERE id = ?').run(coverResult.localPath, book.id);
@@ -306,7 +294,7 @@ app.post('/api/update-missing-covers', async (_req, res) => {
                     console.log(`❌ No cover found for: ${book.title}`);
                     results.push({ id: book.id, title: book.title, success: false });
                 }
-                
+
                 // Small delay to be respectful to APIs
                 await new Promise(resolve => setTimeout(resolve, 1000));
             } catch (error) {
@@ -314,7 +302,7 @@ app.post('/api/update-missing-covers', async (_req, res) => {
                 results.push({ id: book.id, title: book.title, success: false, error: error instanceof Error ? error.message : 'Unknown error' });
             }
         }
-        
+
         return res.json({
             message: `Updated covers for ${updated}/${booksWithoutCovers.length} books`,
             updated,

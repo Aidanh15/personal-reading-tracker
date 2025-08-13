@@ -4,7 +4,10 @@
 
 services:
   reading-tracker:
-    image: personal-reading-tracker:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.rpi
+      target: production
     container_name: personal-reading-tracker-ssd
     ports:
       - "${APP_PORT:-3003}:3003"
@@ -15,7 +18,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - LOGS_PATH=/app/logs
       - LOG_TO_FILE=true
-      - CORS_ORIGIN=${CORS_ORIGIN:-http://192.168.0.177:3003}
+      - CORS_ORIGIN=*
       - RASPBERRY_PI=true
       - NODE_OPTIONS=--max-old-space-size=512 --max-semi-space-size=64
       - UV_THREADPOOL_SIZE=8
