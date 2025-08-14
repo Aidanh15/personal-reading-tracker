@@ -398,9 +398,9 @@ app.post('/api/update-missing-covers', async (_req, res) => {
             }
         });
 
-        console.log(`📊 Found ${booksWithoutCovers.length} books without covers`);
+        console.log(`📊 Found ${booksNeedingCovers.length} books needing covers (after file validation)`);
 
-        if (booksWithoutCovers.length === 0) {
+        if (booksNeedingCovers.length === 0) {
             return res.json({
                 message: 'All books already have covers!',
                 updated: 0,
@@ -409,12 +409,12 @@ app.post('/api/update-missing-covers', async (_req, res) => {
             });
         }
 
-        console.log(`🎨 Updating covers for ${booksWithoutCovers.length} books without covers...`);
+        console.log(`🎨 Updating covers for ${booksNeedingCovers.length} books without covers...`);
 
         let updated = 0;
         const results = [];
 
-        for (const book of booksWithoutCovers) {
+        for (const book of booksNeedingCovers) {
             try {
                 const authors = JSON.parse(book.authors);
                 console.log(`Searching cover for: "${book.title}" by ${authors.join(', ')}`);
