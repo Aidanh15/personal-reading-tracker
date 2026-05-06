@@ -13,13 +13,13 @@ services:
         - linux/arm64
     container_name: personal-reading-tracker-rpi
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-3003}:3003"
     environment:
       - NODE_ENV=production
-      - PORT=3000
+      - PORT=3003
       - DATABASE_PATH=/app/data/reading-tracker.db
       - LOG_LEVEL=${LOG_LEVEL:-warn}
-      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://127.0.0.1:3003}
       - RASPBERRY_PI=true
       - NODE_OPTIONS=--max-old-space-size=256 --gc-interval=100
       - UV_THREADPOOL_SIZE=4
@@ -29,7 +29,7 @@ services:
       - reading_tmp:/app/tmp
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3003/api/health"]
       interval: 60s
       timeout: 15s
       retries: 3
@@ -81,7 +81,7 @@ services:
     image: prom/node-exporter:latest
     container_name: reading-tracker-monitoring-rpi
     ports:
-      - "9100:9100"
+      - "${MONITORING_PORT:-9101}:9100"
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro

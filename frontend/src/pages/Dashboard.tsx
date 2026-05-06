@@ -1,17 +1,27 @@
 import { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useBooks } from '../contexts/BooksContext';
+import { reviewApi } from '../services/api';
 import LoadingSpinner from '../components/UI/LoadingSpinner';
 import BookCard from '../components/UI/BookCard';
-import { BookOpenIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { BookOpenIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import { useState } from 'react';
+import { ReviewSummary } from '../types';
 
 function Dashboard() {
   const { books, loading, error, fetchBooks } = useBooks();
   const [showCompletedBooks, setShowCompletedBooks] = useState(false);
+  const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
 
   useEffect(() => {
     fetchBooks();
   }, [fetchBooks]);
+
+  useEffect(() => {
+    reviewApi.getSummary()
+      .then(setReviewSummary)
+      .catch(() => setReviewSummary(null));
+  }, []);
 
   if (loading && books.length === 0) {
     return (
@@ -38,7 +48,7 @@ function Dashboard() {
     );
   }
 
-  // Sort books by position for optimized reading order
+  // Sort books by position for the chosen reading order
   const sortedBooks = [...books].sort((a, b) => a.position - b.position);
   
   // Filter books by status while maintaining optimized order
@@ -53,7 +63,7 @@ function Dashboard() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Reading Dashboard</h1>
           <p className="text-gray-600 mt-1">
-            Follow your AI-optimized reading sequence and track progress
+            Follow your reading order, review saved passages, and track progress
           </p>
         </div>
         <button className="btn-primary flex items-center space-x-2 self-start sm:self-auto">
@@ -61,6 +71,29 @@ function Dashboard() {
           <span>Add Book</span>
         </button>
       </div>
+
+      {/* Daily Review */}
+      <section className="card">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex items-start space-x-4">
+            <div className="p-3 bg-blue-100 rounded-lg">
+              <SparklesIcon className="h-6 w-6 text-blue-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Daily Review</h2>
+              <p className="text-gray-600 mt-1">
+                {reviewSummary
+                  ? `${reviewSummary.dueCount} saved passage${reviewSummary.dueCount === 1 ? '' : 's'} due today. ${reviewSummary.reviewedToday} reviewed already.`
+                  : 'Revisit saved passages from your local highlight library.'}
+              </p>
+            </div>
+          </div>
+          <Link to="/review" className="btn-primary inline-flex items-center space-x-2 self-start md:self-auto">
+            <SparklesIcon className="h-4 w-4" />
+            <span>Start Review</span>
+          </Link>
+        </div>
+      </section>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
@@ -130,12 +163,12 @@ function Dashboard() {
         </section>
       )}
 
-      {/* Up Next Section - Books in optimized reading order */}
+      {/* Up Next Section - Books in chosen reading order */}
       {upNextBooks.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-gray-900">Up Next</h2>
-            <span className="text-sm text-gray-500">Optimized reading order</span>
+            <span className="text-sm text-gray-500">Your reading order</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {upNextBooks.map(book => (

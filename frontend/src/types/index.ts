@@ -30,6 +30,25 @@ export interface Highlight {
   updatedAt: string;
 }
 
+export interface ReviewHighlight extends Highlight {
+  bookTitle: string;
+  bookAuthors: string[];
+  lastReviewedAt?: string;
+  nextReviewAt?: string;
+  reviewCount: number;
+  favorite: boolean;
+}
+
+export type ReviewAction = 'read' | 'later' | 'favorite' | 'archive';
+
+export interface ReviewSummary {
+  totalHighlights: number;
+  dueCount: number;
+  reviewedToday: number;
+  favoriteCount: number;
+  archivedCount: number;
+}
+
 // Extended highlight type for search results
 export interface HighlightWithBook extends Highlight {
   bookTitle: string;

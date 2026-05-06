@@ -11,6 +11,7 @@ import { monitoring } from './utils/monitoring';
 
 import { booksRouter } from './routes/books';
 import { highlightsRouter } from './routes/highlights';
+import { reviewRouter } from './routes/review';
 import { searchRouter } from './routes/search';
 
 // Load environment variables
@@ -131,8 +132,8 @@ app.get('/api/health', async (_req, res) => {
             environment: NODE_ENV,
             uptime: process.uptime(),
             memory: {
-                used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
-                total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+                used: metrics.memory.used,
+                total: metrics.memory.total,
                 external: Math.round(process.memoryUsage().external / 1024 / 1024),
                 percentage: metrics.memory.percentage
             },
@@ -225,6 +226,7 @@ app.post('/api/logs/rotate', (_req, res) => {
 // API routes
 app.use('/api/books', booksRouter);
 app.use('/api/highlights', highlightsRouter);
+app.use('/api/review', reviewRouter);
 app.use('/api/search', searchRouter);
 
 // Test endpoint for Google Images search

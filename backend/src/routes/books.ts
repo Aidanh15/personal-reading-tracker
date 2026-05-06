@@ -98,30 +98,38 @@ router.put('/:id/status',
   }
 );
 
+const reorderBooksHandler = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { bookIds } = req.body;
+
+    // Validate that all book IDs exist
+    for (const bookId of bookIds) {
+      const book = BookQueries.getBookById(bookId);
+      if (!book) {
+        throw createError(`Book with ID ${bookId} not found`, 404, 'BOOK_NOT_FOUND');
+      }
+    }
+
+    BookQueries.reorderBooks(bookIds);
+
+    // Return updated books
+    const books = BookQueries.getAllBooks();
+    res.json({ books });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // PUT /api/books/reorder - Reorder books
 router.put('/reorder',
   validateBody(schemas.reorderBooks),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { bookIds } = req.body;
-      
-      // Validate that all book IDs exist
-      for (const bookId of bookIds) {
-        const book = BookQueries.getBookById(bookId);
-        if (!book) {
-          throw createError(`Book with ID ${bookId} not found`, 404, 'BOOK_NOT_FOUND');
-        }
-      }
+  reorderBooksHandler
+);
 
-      BookQueries.reorderBooks(bookIds);
-      
-      // Return updated books
-      const books = BookQueries.getAllBooks();
-      res.json({ books });
-    } catch (error) {
-      next(error);
-    }
-  }
+// PUT /api/books/positions - Backward-compatible frontend alias
+router.put('/positions',
+  validateBody(schemas.reorderBooks),
+  reorderBooksHandler
 );
 
 // GET /api/books/:id/highlights - Get highlights for a book

@@ -74,8 +74,8 @@ export class BookQueries {
   // Create new book
   static createBook(bookData: CreateBookRequest): Book {
     const query = `
-      INSERT INTO books (title, authors, position, total_pages, cover_image_url)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO books (title, authors, position, status, total_pages, cover_image_url)
+      VALUES (?, ?, ?, ?, ?, ?)
     `;
     
     const position = bookData.position ?? this.getNextPosition();
@@ -83,6 +83,7 @@ export class BookQueries {
       bookData.title,
       JSON.stringify(bookData.authors),
       position,
+      bookData.status ?? 'not_started',
       bookData.totalPages,
       bookData.coverImageUrl
     );
@@ -99,6 +100,8 @@ export class BookQueries {
   static updateBookProgress(id: number, progressData: UpdateBookProgressRequest): Book | null {
     const updates: string[] = [];
     const values: any[] = [];
+    let updatesStartedDate = false;
+    let updatesCompletedDate = false;
     
     if (progressData.currentPage !== undefined) {
       updates.push('current_page = ?');
@@ -113,6 +116,57 @@ export class BookQueries {
     if (progressData.totalPages !== undefined) {
       updates.push('total_pages = ?');
       values.push(progressData.totalPages);
+    }
+
+    if (progressData.status !== undefined) {
+      updates.push('status = ?');
+      values.push(progressData.status);
+    }
+
+    if (progressData.startedDate !== undefined) {
+      updates.push('started_date = ?');
+      values.push(progressData.startedDate);
+      updatesStartedDate = true;
+    }
+
+    if (progressData.completedDate !== undefined) {
+      updates.push('completed_date = ?');
+      values.push(progressData.completedDate);
+      updatesCompletedDate = true;
+    }
+
+    if (progressData.personalRating !== undefined) {
+      updates.push('personal_rating = ?');
+      values.push(progressData.personalRating);
+    }
+
+    if (progressData.personalReview !== undefined) {
+      updates.push('personal_review = ?');
+      values.push(progressData.personalReview);
+    }
+
+    if (progressData.status === 'not_started') {
+      if (progressData.currentPage === undefined) {
+        updates.push('current_page = ?');
+        values.push(0);
+      }
+      if (progressData.progressPercentage === undefined) {
+        updates.push('progress_percentage = ?');
+        values.push(0);
+      }
+      if (!updatesStartedDate) {
+        updates.push('started_date = ?');
+        values.push(null);
+      }
+      if (!updatesCompletedDate) {
+        updates.push('completed_date = ?');
+        values.push(null);
+      }
+    }
+
+    if (progressData.status === 'in_progress' && !updatesCompletedDate) {
+      updates.push('completed_date = ?');
+      values.push(null);
     }
     
     if (updates.length === 0) {
@@ -130,15 +184,37 @@ export class BookQueries {
   static updateBookStatus(id: number, statusData: UpdateBookStatusRequest): Book | null {
     const updates: string[] = ['status = ?'];
     const values: any[] = [statusData.status];
+    let updatesStartedDate = false;
+    let updatesCompletedDate = false;
     
     if (statusData.startedDate !== undefined) {
       updates.push('started_date = ?');
       values.push(statusData.startedDate);
+      updatesStartedDate = true;
     }
     
     if (statusData.completedDate !== undefined) {
       updates.push('completed_date = ?');
       values.push(statusData.completedDate);
+      updatesCompletedDate = true;
+    }
+
+    if (statusData.status === 'not_started') {
+      updates.push('progress_percentage = ?', 'current_page = ?');
+      values.push(0, 0);
+      if (!updatesStartedDate) {
+        updates.push('started_date = ?');
+        values.push(null);
+      }
+      if (!updatesCompletedDate) {
+        updates.push('completed_date = ?');
+        values.push(null);
+      }
+    }
+
+    if (statusData.status === 'in_progress' && !updatesCompletedDate) {
+      updates.push('completed_date = ?');
+      values.push(null);
     }
     
     const query = `UPDATE books SET ${updates.join(', ')} WHERE id = ?`;
@@ -152,6 +228,21 @@ export class BookQueries {
   static updateBook(id: number, updateData: Partial<Book>): Book | null {
     const updates: string[] = [];
     const values: any[] = [];
+
+    if (updateData.title !== undefined) {
+      updates.push('title = ?');
+      values.push(updateData.title);
+    }
+
+    if (updateData.authors !== undefined) {
+      updates.push('authors = ?');
+      values.push(JSON.stringify(updateData.authors));
+    }
+
+    if (updateData.position !== undefined) {
+      updates.push('position = ?');
+      values.push(updateData.position);
+    }
     
     if (updateData.status !== undefined) {
       updates.push('status = ?');
@@ -166,6 +257,11 @@ export class BookQueries {
     if (updateData.currentPage !== undefined) {
       updates.push('current_page = ?');
       values.push(updateData.currentPage);
+    }
+
+    if (updateData.totalPages !== undefined) {
+      updates.push('total_pages = ?');
+      values.push(updateData.totalPages);
     }
     
     if (updateData.startedDate !== undefined) {
@@ -186,6 +282,11 @@ export class BookQueries {
     if (updateData.personalReview !== undefined) {
       updates.push('personal_review = ?');
       values.push(updateData.personalReview);
+    }
+
+    if (updateData.coverImageUrl !== undefined) {
+      updates.push('cover_image_url = ?');
+      values.push(updateData.coverImageUrl);
     }
     
     if (updates.length === 0) {

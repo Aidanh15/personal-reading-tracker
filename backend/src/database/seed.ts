@@ -3,7 +3,9 @@ import { HighlightQueries } from './queries/highlights';
 import { CreateBookRequest, CreateHighlightRequest } from '../types';
 import { db } from './connection';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { basename, extname } from 'path';
 import { CoverService, CoverSearchResult } from '../services/coverService';
+import { readZipTextEntries } from '../utils/zip';
 
 interface ParsedBook {
     title: string;
@@ -11,7 +13,128 @@ interface ParsedBook {
     highlights: CreateHighlightRequest[];
 }
 
+interface KindleImportStats {
+    booksParsed: number;
+    booksMatched: number;
+    booksCreated: number;
+    highlightsParsed: number;
+    highlightsImported: number;
+    highlightsSkipped: number;
+}
+
+interface ReadingPlanBook {
+    position: number;
+    title: string;
+    authors: string[];
+    status?: 'not_started' | 'in_progress' | 'completed';
+    aliases?: string[];
+}
+
 export class DatabaseSeeder {
+    private static readonly KINDLE_METADATA_OVERRIDES: ReadingPlanBook[] = [
+        {
+            position: 0,
+            title: 'War and Peace',
+            authors: ['Leo Tolstoy'],
+            status: 'completed',
+            aliases: ['War And Peace']
+        },
+        {
+            position: 0,
+            title: 'The True Believer',
+            authors: ['Eric Hoffer'],
+            aliases: ['The True Believer, Thoughts on the Nature of Mass Movements']
+        },
+        {
+            position: 0,
+            title: 'Guerilla Days in Ireland',
+            authors: ['Tom Barry']
+        },
+        {
+            position: 0,
+            title: 'Slaughterhouse-Five',
+            authors: ['Kurt Vonnegut'],
+            status: 'completed',
+            aliases: [
+                'Slaughterhouse 5, Discover Kurt Vonnegut\'s anti-war masterpiece',
+                'Slaughterhouse 5, Discover Kurt Vonnegut’s anti-war masterpiece'
+            ]
+        },
+        {
+            position: 0,
+            title: 'Nausea',
+            authors: ['Jean-Paul Sartre']
+        }
+    ];
+
+    private static readonly REVISED_MASTER_READING_PLAN: ReadingPlanBook[] = [
+        { position: 17, title: 'Plato: Five Dialogues', authors: ['Plato'], status: 'completed' },
+        { position: 18, title: 'Demons', authors: ['Fyodor Dostoevsky'], status: 'in_progress', aliases: ['The Possessed'] },
+        { position: 19, title: 'Invisible Cities', authors: ['Italo Calvino'] },
+        { position: 20, title: 'The Gulag Archipelago (Abridged)', authors: ['Aleksandr Solzhenitsyn'], aliases: ['The Gulag Archipelago: The Authorized Abridgement'] },
+        { position: 21, title: 'Nicomachean Ethics', authors: ['Aristotle'], aliases: ['Aristotle\'s Nicomachean Ethics'] },
+        { position: 22, title: 'On Human Nature; Studies in Pessimism', authors: ['Arthur Schopenhauer'], aliases: ['On Human Nature, Studies in Pessimism, etc.'] },
+        { position: 23, title: 'The Kingdom of God Is Within You', authors: ['Leo Tolstoy'] },
+        { position: 24, title: 'Anna Karenina', authors: ['Leo Tolstoy'] },
+        { position: 25, title: 'The Grapes of Wrath', authors: ['John Steinbeck'] },
+        { position: 26, title: 'On the Road', authors: ['Jack Kerouac'] },
+        { position: 27, title: 'Catch-22', authors: ['Joseph Heller'] },
+        { position: 28, title: 'A Clockwork Orange', authors: ['Anthony Burgess'] },
+        { position: 29, title: 'Pnin', authors: ['Vladimir Nabokov'] },
+        { position: 30, title: 'Desolation Angels', authors: ['Jack Kerouac'] },
+        { position: 31, title: 'White Noise', authors: ['Don DeLillo'] },
+        { position: 32, title: 'Infinite Jest', authors: ['David Foster Wallace'] },
+        { position: 33, title: 'The Road', authors: ['Cormac McCarthy'] },
+        { position: 34, title: 'Blood Meridian', authors: ['Cormac McCarthy'] },
+        { position: 35, title: 'The Iliad', authors: ['Homer'], aliases: ['The Iliad of Homer'] },
+        { position: 36, title: 'Metamorphoses', authors: ['Ovid'], aliases: ['The Metamorphoses'] },
+        { position: 37, title: 'The Origin of Consciousness in the Breakdown of the Bicameral Mind', authors: ['Julian Jaynes'] },
+        { position: 38, title: 'The Art of Rhetoric', authors: ['Aristotle'] },
+        { position: 39, title: 'The Art of War', authors: ['Sun Tzu'] },
+        { position: 40, title: 'The Moon Is Down', authors: ['John Steinbeck'] },
+        { position: 41, title: 'Discourses, Fragments, Handbook', authors: ['Epictetus'] },
+        { position: 42, title: 'In Praise of Folly', authors: ['Erasmus'] },
+        { position: 43, title: 'Don Quixote', authors: ['Miguel de Cervantes'], aliases: ['Don Quixote - Miguel De Cervantes Saavedra'] },
+        { position: 44, title: 'Les Miserables', authors: ['Victor Hugo'] },
+        { position: 45, title: 'Ulysses', authors: ['James Joyce'] },
+        { position: 46, title: 'The Poetics of Space', authors: ['Gaston Bachelard'] },
+        { position: 47, title: 'The Waste Land', authors: ['T. S. Eliot'] },
+        { position: 48, title: 'The Recognitions', authors: ['William Gaddis'] },
+        { position: 49, title: 'The Selfish Gene', authors: ['Richard Dawkins'] },
+        { position: 50, title: 'The Crying of Lot 49', authors: ['Thomas Pynchon'] },
+        { position: 51, title: 'Gravity\'s Rainbow', authors: ['Thomas Pynchon'] },
+        { position: 52, title: 'The God Delusion', authors: ['Richard Dawkins'] },
+        { position: 53, title: 'Lolita', authors: ['Vladimir Nabokov'] },
+        { position: 54, title: 'Strange Pilgrims', authors: ['Gabriel Garcia Marquez'] },
+        { position: 55, title: 'Foucault\'s Pendulum', authors: ['Umberto Eco'] },
+        { position: 56, title: 'Technofeudalism', authors: ['Yanis Varoufakis'], aliases: ['Technofeudalism: What Killed Capitalism'] },
+        { position: 57, title: 'All the Devils Are Here', authors: ['Bethany McLean', 'Joe Nocera'] },
+        { position: 58, title: 'Dopesick', authors: ['Beth Macy'], aliases: ['Dopesick: Dealers, Doctors and the Drug Company that Addicted America'] },
+        { position: 59, title: 'No More Tears', authors: ['Gardiner Harris'], aliases: ['No More Tears: The Dark Secrets of Johnson & Johnson'] },
+        { position: 60, title: 'The Abolition of Man', authors: ['C. S. Lewis'] },
+        { position: 61, title: 'Right/Wrong', authors: ['Juan Enriquez'], aliases: ['Right/Wrong: How Technology Transforms Our Ethics'] },
+        { position: 62, title: 'The Racket', authors: ['Conor Niland'] },
+        { position: 63, title: 'The Undiscovered Self', authors: ['C. G. Jung'] },
+        { position: 64, title: 'Knowledge in a Nutshell: Carl Jung', authors: ['Gary Bobroff'] },
+        { position: 65, title: 'The Looming Tower', authors: ['Lawrence Wright'], aliases: ['The Looming Tower: Al-Qaeda and the Road to 9/11'] },
+        { position: 66, title: 'A Preface to Paradise Lost', authors: ['C. S. Lewis'] },
+        { position: 67, title: 'Paradise Lost & Paradise Regained', authors: ['John Milton'] },
+        { position: 68, title: 'The Lord of the Rings', authors: ['J. R. R. Tolkien'] },
+        { position: 69, title: 'The Road to Los Angeles', authors: ['John Fante'] },
+        { position: 70, title: 'Of Human Bondage', authors: ['W. Somerset Maugham'] },
+        { position: 71, title: 'Ask the Dust', authors: ['John Fante'] },
+        { position: 72, title: 'American Psycho', authors: ['Bret Easton Ellis'] },
+        { position: 73, title: 'Dreams from Bunker Hill', authors: ['John Fante'] },
+        { position: 74, title: 'The Return of the Native', authors: ['Thomas Hardy'] },
+        { position: 75, title: 'Discourses', authors: ['Niccolo Machiavelli'] },
+        { position: 76, title: 'The Famine Plot', authors: ['Tim Pat Coogan'], aliases: ['The Famine Plot: England\'s Role in Ireland\'s Greatest Tragedy'] },
+        { position: 77, title: 'The Twelve Apostles', authors: ['Tim Pat Coogan'] },
+        { position: 78, title: 'How to Live: A Life of Montaigne', authors: ['Sarah Bakewell'] },
+        { position: 79, title: 'Essays', authors: ['Michel de Montaigne'] },
+        { position: 80, title: 'Man\'s Search for Meaning', authors: ['Viktor Frankl'] },
+        { position: 81, title: 'Rapture (BioShock)', authors: ['John Shirley'], aliases: ['Rapture'] }
+    ];
+
     // Reading list from the provided data - extracted from KindleHighlights.txt
     private static readonly READING_LIST: CreateBookRequest[] = [
         {
@@ -144,13 +267,17 @@ export class DatabaseSeeder {
         }
     }
 
-    // Parse Kindle highlights from text file
+    // Parse Kindle highlights from text file or ZIP of per-book Markdown files
     static parseKindleHighlights(filePath: string): ParsedBook[] {
         console.log(`Parsing Kindle highlights from: ${filePath}`);
 
         if (!existsSync(filePath)) {
             console.warn(`Kindle highlights file not found: ${filePath}`);
             return [];
+        }
+
+        if (filePath.toLowerCase().endsWith('.zip')) {
+            return this.parseKindleHighlightsZip(filePath);
         }
 
         try {
@@ -227,6 +354,356 @@ export class DatabaseSeeder {
             console.error('Failed to parse Kindle highlights:', error);
             return [];
         }
+    }
+
+    static importKindleHighlights(filePath: string): KindleImportStats {
+        console.log(`Importing Kindle highlights from: ${filePath}`);
+
+        const parsedBooks = this.parseKindleHighlights(filePath);
+        const stats: KindleImportStats = {
+            booksParsed: parsedBooks.length,
+            booksMatched: 0,
+            booksCreated: 0,
+            highlightsParsed: parsedBooks.reduce((sum, book) => sum + book.highlights.length, 0),
+            highlightsImported: 0,
+            highlightsSkipped: 0
+        };
+
+        const existingBooks = BookQueries.getAllBooks();
+
+        const importTransaction = db.transaction(() => {
+            for (const parsedBook of parsedBooks) {
+                let book = this.findMatchingBook(parsedBook.title, existingBooks);
+
+                if (book) {
+                    stats.booksMatched += 1;
+                } else {
+                    book = BookQueries.createBook({
+                        title: parsedBook.title,
+                        authors: parsedBook.authors,
+                        position: existingBooks.length + stats.booksCreated + 1
+                    });
+                    existingBooks.push(book);
+                    stats.booksCreated += 1;
+                    console.log(`Created book from highlights: ${book.title}`);
+                }
+
+                for (const highlightData of parsedBook.highlights) {
+                    if (HighlightQueries.highlightExists(book.id, highlightData.quoteText)) {
+                        stats.highlightsSkipped += 1;
+                        continue;
+                    }
+
+                    HighlightQueries.createHighlight(book.id, highlightData);
+                    stats.highlightsImported += 1;
+                }
+            }
+        });
+
+        importTransaction();
+
+        console.log(`Parsed ${stats.booksParsed} books and ${stats.highlightsParsed} highlights`);
+        console.log(`Matched ${stats.booksMatched} books, created ${stats.booksCreated} books`);
+        console.log(`Imported ${stats.highlightsImported} highlights, skipped ${stats.highlightsSkipped} duplicates`);
+
+        return stats;
+    }
+
+    private static parseKindleHighlightsZip(filePath: string): ParsedBook[] {
+        const zipBuffer = readFileSync(filePath);
+        const markdownEntries = readZipTextEntries(zipBuffer, ['.md', '.markdown']);
+        const parsedBooks: ParsedBook[] = [];
+
+        for (const entry of markdownEntries) {
+            const rawTitle = this.cleanKindleMarkdownTitle(entry.name);
+            const override = this.findMetadataOverride(rawTitle);
+            const title = override?.title ?? rawTitle;
+            const highlights = this.parseKindleMarkdownHighlights(entry.content);
+
+            if (!title || highlights.length === 0) {
+                continue;
+            }
+
+            parsedBooks.push({
+                title,
+                authors: override?.authors ?? ['Unknown'],
+                highlights
+            });
+        }
+
+        console.log(`Parsed ${parsedBooks.length} books with highlights from Kindle ZIP`);
+        return parsedBooks;
+    }
+
+    private static parseKindleMarkdownHighlights(content: string): CreateHighlightRequest[] {
+        const normalizedContent = content
+            .replace(/\r\n/g, '\n')
+            .replace(/\r/g, '\n');
+
+        return normalizedContent
+            .split(/\n{2,}/)
+            .map(block => block
+                .split('\n')
+                .map(line => line.trim())
+                .filter(Boolean)
+                .join(' ')
+                .replace(/^[-*>#\s]+/, '')
+                .trim()
+            )
+            .filter(quote => quote.length >= 20)
+            .map(quoteText => ({
+                quoteText: this.decodeHtmlEntities(quoteText),
+                personalNotes: 'Imported from Kindle highlights'
+            }));
+    }
+
+    private static cleanKindleMarkdownTitle(fileName: string): string {
+        const titleWithExtension = basename(fileName);
+        const extension = extname(titleWithExtension);
+        const title = extension
+            ? titleWithExtension.slice(0, -extension.length)
+            : titleWithExtension;
+
+        return this.decodeHtmlEntities(title)
+            .replace(/\s*\([^)]*(classics|edition|complete|unabridged|penguin|hackett|oxford|modern)[^)]*\)\s*/gi, ' ')
+            .replace(/,{2,}/g, ',')
+            .replace(/\s+/g, ' ')
+            .replace(/\s+,/g, ',')
+            .trim();
+    }
+
+    private static findMatchingBook(title: string, books: ReturnType<typeof BookQueries.getAllBooks>[number][]) {
+        const normalizedTitle = this.normalizeTitle(title);
+        const titleTokens = this.titleTokens(title);
+
+        return books.find(book => {
+            const normalizedBookTitle = this.normalizeTitle(book.title);
+            if (normalizedTitle.includes(normalizedBookTitle) || normalizedBookTitle.includes(normalizedTitle)) {
+                return true;
+            }
+
+            const bookTokens = this.titleTokens(book.title);
+            const sharedTokens = titleTokens.filter(token => bookTokens.includes(token));
+            return sharedTokens.length >= Math.min(2, titleTokens.length, bookTokens.length);
+        });
+    }
+
+    private static findMetadataOverride(title: string): ReadingPlanBook | undefined {
+        return this.KINDLE_METADATA_OVERRIDES.find(entry =>
+            this.matchesPlanTitle(title, entry)
+        );
+    }
+
+    private static matchesPlanTitle(title: string, entry: ReadingPlanBook): boolean {
+        const normalizedTitle = this.normalizeTitle(title);
+        const possibleTitles = [entry.title, ...(entry.aliases ?? [])];
+
+        return possibleTitles.some(possibleTitle => this.normalizeTitle(possibleTitle) === normalizedTitle);
+    }
+
+    static syncMasterReadingPlan(): {
+        planned: number;
+        matched: number;
+        created: number;
+        metadataUpdated: number;
+        movedUnlisted: number;
+    } {
+        const stats = {
+            planned: this.REVISED_MASTER_READING_PLAN.length,
+            matched: 0,
+            created: 0,
+            metadataUpdated: 0,
+            movedUnlisted: 0
+        };
+
+        const now = new Date().toISOString();
+        const plannedBookIds = new Set<number>();
+
+        const transaction = db.transaction(() => {
+            this.decodeExistingBookMetadata();
+
+            let books = BookQueries.getAllBooks();
+            for (const metadata of this.KINDLE_METADATA_OVERRIDES) {
+                const book = this.findBookForPlanEntry(metadata, books);
+                if (!book) {
+                    continue;
+                }
+
+                BookQueries.updateBook(book.id, {
+                    title: metadata.title,
+                    authors: metadata.authors,
+                    ...(metadata.status ? { status: metadata.status } : {}),
+                    ...(metadata.status === 'completed' ? {
+                        progressPercentage: 100,
+                        completedDate: book.completedDate ?? now
+                    } : {})
+                });
+                stats.metadataUpdated += 1;
+            }
+
+            books = BookQueries.getAllBooks();
+
+            for (const planBook of this.REVISED_MASTER_READING_PLAN) {
+                const status = planBook.status ?? 'not_started';
+                let book = this.findBookForPlanEntry(planBook, books);
+
+                if (book) {
+                    stats.matched += 1;
+                    const updateData = {
+                        title: planBook.title,
+                        authors: planBook.authors,
+                        position: planBook.position,
+                        status,
+                        progressPercentage: status === 'completed'
+                            ? 100
+                            : status === 'not_started'
+                                ? 0
+                                : book.progressPercentage,
+                        currentPage: status === 'not_started' ? 0 : book.currentPage,
+                        ...(status === 'completed' ? { completedDate: book.completedDate ?? now } : {}),
+                        ...(status === 'in_progress' ? { startedDate: book.startedDate ?? now } : {})
+                    };
+
+                    BookQueries.updateBook(book.id, updateData);
+                    plannedBookIds.add(book.id);
+                } else {
+                    book = BookQueries.createBook({
+                        title: planBook.title,
+                        authors: planBook.authors,
+                        position: planBook.position,
+                        status
+                    });
+
+                    if (status === 'completed' || status === 'in_progress') {
+                        BookQueries.updateBook(book.id, {
+                            progressPercentage: status === 'completed' ? 100 : 0,
+                            ...(status === 'completed' ? { completedDate: now } : {}),
+                            ...(status === 'in_progress' ? { startedDate: now } : {})
+                        });
+                    }
+
+                    plannedBookIds.add(book.id);
+                    books.push(book);
+                    stats.created += 1;
+                }
+            }
+
+            const refreshedBooks = BookQueries.getAllBooks();
+            let overflowPosition = 1000;
+
+            for (const book of refreshedBooks) {
+                if (plannedBookIds.has(book.id) || book.status === 'completed') {
+                    continue;
+                }
+
+                BookQueries.updateBook(book.id, {
+                    position: overflowPosition++,
+                    status: book.status === 'in_progress' ? 'completed' : book.status,
+                    ...(book.status === 'in_progress' ? {
+                        progressPercentage: 100,
+                        completedDate: book.completedDate ?? now
+                    } : {})
+                });
+                stats.movedUnlisted += 1;
+            }
+        });
+
+        transaction();
+
+        console.log(`Synced ${stats.planned} planned books`);
+        console.log(`Matched ${stats.matched}, created ${stats.created}`);
+        console.log(`Updated metadata for ${stats.metadataUpdated} Kindle-created books`);
+        console.log(`Moved ${stats.movedUnlisted} unlisted active books to the end`);
+
+        return stats;
+    }
+
+    private static decodeExistingBookMetadata(): void {
+        const books = BookQueries.getAllBooks();
+
+        for (const book of books) {
+            const decodedTitle = this.decodeHtmlEntities(book.title);
+            const decodedAuthors = book.authors.map(author => this.decodeHtmlEntities(author));
+
+            if (
+                decodedTitle !== book.title ||
+                JSON.stringify(decodedAuthors) !== JSON.stringify(book.authors)
+            ) {
+                BookQueries.updateBook(book.id, {
+                    title: decodedTitle,
+                    authors: decodedAuthors
+                });
+            }
+        }
+    }
+
+    private static findBookForPlanEntry(
+        entry: ReadingPlanBook,
+        books: ReturnType<typeof BookQueries.getAllBooks>[number][]
+    ) {
+        return books.find(book => {
+            if (!this.matchesPlanTitle(book.title, entry)) {
+                return false;
+            }
+
+            return this.authorsOverlap(book.authors, entry.authors) ||
+                entry.aliases !== undefined ||
+                book.authors.some(author => this.normalizeTitle(author) === 'unknown') ||
+                entry.position === 0;
+        });
+    }
+
+    private static authorsOverlap(bookAuthors: string[], planAuthors: string[]): boolean {
+        return bookAuthors.some(bookAuthor =>
+            planAuthors.some(planAuthor => {
+                const normalizedBookAuthor = this.normalizeTitle(bookAuthor);
+                const normalizedPlanAuthor = this.normalizeTitle(planAuthor);
+                return normalizedBookAuthor.includes(normalizedPlanAuthor) ||
+                    normalizedPlanAuthor.includes(normalizedBookAuthor);
+            })
+        );
+    }
+
+    private static normalizeTitle(title: string): string {
+        return title
+            .toLowerCase()
+            .replace(/\([^)]*\)/g, ' ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    private static titleTokens(title: string): string[] {
+        const stopwords = new Set([
+            'a', 'an', 'and', 'by', 'complete', 'edition', 'for', 'in', 'of', 'on', 'penguin',
+            'the', 'to', 'unabridged', 'with'
+        ]);
+
+        return this.normalizeTitle(title)
+            .split(' ')
+            .filter(token => token.length > 2 && !stopwords.has(token));
+    }
+
+    private static decodeHtmlEntities(value: string): string {
+        const namedEntities: Record<string, string> = {
+            amp: '&',
+            apos: "'",
+            gt: '>',
+            lt: '<',
+            quot: '"'
+        };
+
+        return value.replace(/&(#(\d+)|#x([0-9a-f]+)|[a-z]+);/gi, (match, entity, decimal, hex) => {
+            if (decimal) {
+                return String.fromCodePoint(Number(decimal));
+            }
+
+            if (hex) {
+                return String.fromCodePoint(parseInt(hex, 16));
+            }
+
+            return namedEntities[entity.toLowerCase()] ?? match;
+        });
     }
 
     // Seed database with your complete reading data

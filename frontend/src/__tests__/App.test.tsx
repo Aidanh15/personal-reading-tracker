@@ -33,6 +33,18 @@ vi.mock('../contexts/HighlightsContext', () => ({
   }),
 }));
 
+vi.mock('../services/api', () => ({
+  reviewApi: {
+    getSummary: vi.fn().mockResolvedValue({
+      totalHighlights: 0,
+      dueCount: 0,
+      reviewedToday: 0,
+      favoriteCount: 0,
+      archivedCount: 0,
+    }),
+  },
+}));
+
 describe('App', () => {
   it('renders without crashing', () => {
     render(
