@@ -30,6 +30,25 @@ export interface Highlight {
   updatedAt: string;
 }
 
+export interface ReviewHighlight extends Highlight {
+  bookTitle: string;
+  bookAuthors: string[];
+  lastReviewedAt?: string;
+  nextReviewAt?: string;
+  reviewCount: number;
+  favorite: boolean;
+}
+
+export type ReviewAction = 'read' | 'later' | 'favorite' | 'archive';
+
+export interface ReviewSummary {
+  totalHighlights: number;
+  dueCount: number;
+  reviewedToday: number;
+  favoriteCount: number;
+  archivedCount: number;
+}
+
 export interface ReadingSession {
   id: number;
   bookId: number;
@@ -45,6 +64,7 @@ export interface CreateBookRequest {
   title: string;
   authors: string[];
   position?: number;
+  status?: 'not_started' | 'in_progress' | 'completed';
   totalPages?: number;
   coverImageUrl?: string;
 }
@@ -53,6 +73,11 @@ export interface UpdateBookProgressRequest {
   currentPage?: number;
   progressPercentage?: number;
   totalPages?: number;
+  status?: 'not_started' | 'in_progress' | 'completed';
+  startedDate?: string;
+  completedDate?: string;
+  personalRating?: number;
+  personalReview?: string;
 }
 
 export interface UpdateBookStatusRequest {

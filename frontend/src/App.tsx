@@ -6,6 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary'
 import Layout from './components/Layout/Layout'
 import Dashboard from './pages/Dashboard'
 import BookDetail from './pages/BookDetail'
+import Review from './pages/Review'
 import SearchPage from './pages/SearchPage'
 import ComponentDemo from './pages/ComponentDemo'
 import NotFound from './pages/NotFound'
@@ -23,6 +24,7 @@ function AppContent() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/books/:id" element={<BookDetail />} />
+              <Route path="/review" element={<Review />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/components" element={<ComponentDemo />} />
               <Route path="*" element={<NotFound />} />

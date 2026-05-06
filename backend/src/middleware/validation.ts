@@ -9,6 +9,7 @@ export const schemas = {
     title: z.string().min(1, 'Title is required').max(500, 'Title too long'),
     authors: z.array(z.string().min(1, 'Author name cannot be empty')).min(1, 'At least one author is required'),
     position: z.number().int().positive().optional(),
+    status: z.enum(['not_started', 'in_progress', 'completed']).optional(),
     totalPages: z.number().int().positive().optional(),
     coverImageUrl: z.string().url().optional()
   }),
@@ -16,7 +17,12 @@ export const schemas = {
   updateBookProgress: z.object({
     currentPage: z.number().int().min(0).optional(),
     progressPercentage: z.number().int().min(0).max(100).optional(),
-    totalPages: z.number().int().positive().optional()
+    totalPages: z.number().int().positive().optional(),
+    status: z.enum(['not_started', 'in_progress', 'completed']).optional(),
+    startedDate: z.string().datetime().optional(),
+    completedDate: z.string().datetime().optional(),
+    personalRating: z.number().int().min(1).max(5).optional(),
+    personalReview: z.string().max(5000).optional()
   }),
 
   updateBookStatus: z.object({

@@ -81,6 +81,18 @@ async function main() {
                 });
                 break;
 
+            case 'import-kindle':
+                const importFile = args[1] || join(process.cwd(), '../imports/KindleHighlights.zip');
+                console.log('📥 Importing Kindle highlights into existing database...');
+                console.log(`Using Kindle highlights file: ${importFile}`);
+                DatabaseSeeder.importKindleHighlights(importFile);
+                break;
+
+            case 'sync-reading-plan':
+                console.log('🧭 Syncing revised master reading plan...');
+                DatabaseSeeder.syncMasterReadingPlan();
+                break;
+
             default:
                 console.log(`
 📚 Personal Reading Tracker - Database Seeding CLI
@@ -98,6 +110,8 @@ Commands:
   restore <path>               Restore database from backup
   add-progress                 Add sample progress data to existing books
   parse-kindle [file]          Parse and display Kindle highlights (dry run)
+  import-kindle [file]         Import Kindle highlights into existing database with dedupe
+  sync-reading-plan            Apply revised reading order, statuses, and metadata fixes
 
 Examples:
   tsx seed.ts seed-user-data
@@ -106,6 +120,7 @@ Examples:
   tsx seed.ts backup ./backups/my-backup.json
   tsx seed.ts restore ./backups/my-backup.json
   tsx seed.ts parse-kindle
+  tsx seed.ts import-kindle ./imports/KindleHighlights.zip
                 `);
                 break;
         }
