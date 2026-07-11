@@ -274,6 +274,7 @@ function SearchBar({
               <option value="not_started">Not Started</option>
               <option value="in_progress">In Progress</option>
               <option value="completed">Completed</option>
+              <option value="did_not_finish">Did Not Finish</option>
             </select>
           </div>
 

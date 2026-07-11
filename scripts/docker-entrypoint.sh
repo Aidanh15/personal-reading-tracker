@@ -20,6 +20,14 @@ else
     echo "⚠️  Database seeding failed or was skipped (data already exists)"
 fi
 
+# Reconcile the numbered master list without resetting existing reading progress.
+echo "🧭 Syncing the master reading plan..."
+if node dist/scripts/seed.js sync-reading-plan; then
+    echo "✅ Master reading plan is up to date"
+else
+    echo "⚠️  Master reading plan sync failed; existing library data was left in place"
+fi
+
 # Change back to app directory
 cd /app
 

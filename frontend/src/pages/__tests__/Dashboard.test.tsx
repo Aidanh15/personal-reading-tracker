@@ -158,9 +158,9 @@ describe('Dashboard', () => {
 
       await waitFor(() => {
         // Check for stats labels
-        expect(screen.getByText('Total Books')).toBeInTheDocument();
+        expect(screen.getByText('In the library')).toBeInTheDocument();
         expect(screen.getAllByText('Reading').length).toBeGreaterThan(0);
-        expect(screen.getByText('Completed')).toBeInTheDocument();
+        expect(screen.getByText('Books completed')).toBeInTheDocument();
       });
     });
 
@@ -177,7 +177,7 @@ describe('Dashboard', () => {
       render(<MockedDashboard />);
 
       await waitFor(() => {
-        expect(screen.getByText('Your reading order')).toBeInTheDocument();
+        expect(screen.getByText(/Your reading order/)).toBeInTheDocument();
         expect(screen.getAllByText('First Book').length).toBeGreaterThan(0);
         expect(screen.getAllByText('Fourth Book').length).toBeGreaterThan(0);
       });
@@ -284,9 +284,9 @@ describe('Dashboard', () => {
 
       await waitFor(() => {
         // Check for responsive grid classes in stats section
-        const statsSection = screen.getByText('Total Books').closest('.grid');
-        expect(statsSection).toHaveClass('grid-cols-2');
-        expect(statsSection).toHaveClass('md:grid-cols-4');
+        const statsSection = screen.getByText('In the library').closest('section');
+        expect(statsSection).toHaveClass('sm:grid-cols-2');
+        expect(statsSection).toHaveClass('lg:grid-cols-4');
       });
     });
 
@@ -296,7 +296,7 @@ describe('Dashboard', () => {
       await waitFor(() => {
         // Check that the dashboard renders with responsive layout
         expect(screen.getByText('Reading Dashboard')).toBeInTheDocument();
-        expect(screen.getByText('Add Book')).toBeInTheDocument();
+        expect(screen.getByText('Start Review')).toBeInTheDocument();
       });
     });
   });

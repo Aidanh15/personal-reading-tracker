@@ -44,6 +44,15 @@ router.get('/due',
   }
 );
 
+// GET /api/review/saved - View all highlights explicitly saved during review
+router.get('/saved', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json({ highlights: ReviewQueries.getSavedHighlights() });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // POST /api/review/:id - Record a review action for a highlight
 router.post('/:id',
   validateParams(highlightIdSchema),

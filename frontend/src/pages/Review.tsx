@@ -11,6 +11,7 @@ import {
 import { reviewApi } from '../services/api';
 import { ReviewAction, ReviewHighlight, ReviewSummary } from '../types';
 import LoadingSpinner from '../components/UI/LoadingSpinner';
+import Modal from '../components/UI/Modal';
 
 function Review() {
   const [queue, setQueue] = useState<ReviewHighlight[]>([]);
@@ -18,6 +19,10 @@ function Review() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<ReviewAction | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [savedHighlights, setSavedHighlights] = useState<ReviewHighlight[]>([]);
+  const [savedOpen, setSavedOpen] = useState(false);
+  const [savedLoading, setSavedLoading] = useState(false);
+  const [savedError, setSavedError] = useState<string | null>(null);
 
   const currentHighlight = queue[0];
 
@@ -64,6 +69,30 @@ function Review() {
     }
   };
 
+  const openSavedHighlights = async () => {
+    setSavedOpen(true);
+    setSavedLoading(true);
+    setSavedError(null);
+    try {
+      setSavedHighlights(await reviewApi.getSaved());
+    } catch (error) {
+      setSavedError(error instanceof Error ? error.message : 'Failed to load saved highlights');
+    } finally {
+      setSavedLoading(false);
+    }
+  };
+
+  const removeSavedHighlight = async (highlightId: number) => {
+    try {
+      const result = await reviewApi.recordAction(highlightId, 'favorite');
+      setSavedHighlights(items => items.filter(item => item.id !== highlightId));
+      setQueue(items => items.map(item => item.id === highlightId ? result.highlight : item));
+      setSummary(result.summary);
+    } catch (error) {
+      setSavedError(error instanceof Error ? error.message : 'Failed to remove saved highlight');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -103,10 +132,15 @@ function Review() {
             <p className="text-xs text-gray-500">Today</p>
             <p className="text-xl font-bold text-gray-900">{summary?.reviewedToday ?? 0}</p>
           </div>
-          <div className="card p-3">
+          <button
+            type="button"
+            onClick={openSavedHighlights}
+            className="card p-3 text-center transition hover:-translate-y-0.5 hover:border-copper-500/40 hover:shadow-card-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-copper-500"
+            aria-label={`View ${summary?.favoriteCount ?? 0} saved highlights`}
+          >
             <p className="text-xs text-gray-500">Saved</p>
             <p className="text-xl font-bold text-gray-900">{summary?.favoriteCount ?? 0}</p>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -182,6 +216,62 @@ function Review() {
           </div>
         </section>
       )}
+
+      <Modal
+        isOpen={savedOpen}
+        onClose={() => setSavedOpen(false)}
+        title={`Saved highlights (${summary?.favoriteCount ?? savedHighlights.length})`}
+        size="xl"
+      >
+        {savedLoading ? (
+          <div className="grid min-h-40 place-items-center"><LoadingSpinner size="lg" /></div>
+        ) : savedError ? (
+          <div className="py-8 text-center">
+            <p className="text-sm text-red-600">{savedError}</p>
+            <button type="button" onClick={openSavedHighlights} className="btn-secondary mt-4">Try Again</button>
+          </div>
+        ) : savedHighlights.length === 0 ? (
+          <div className="py-10 text-center">
+            <StarIcon className="mx-auto h-9 w-9 text-ink-300" />
+            <h3 className="mt-4 font-display text-2xl text-ink-950">Nothing saved yet</h3>
+            <p className="mt-2 text-sm text-ink-500">Use Save during review to build a collection of passages worth returning to.</p>
+          </div>
+        ) : (
+          <div className="max-h-[65vh] space-y-4 overflow-y-auto pr-1">
+            {savedHighlights.map(highlight => (
+              <article key={highlight.id} className="rounded-2xl border border-ink-900/10 bg-paper-100/60 p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <Link to={`/books/${highlight.bookId}`} onClick={() => setSavedOpen(false)} className="text-sm font-semibold text-copper-700 hover:text-copper-800">
+                      {highlight.bookTitle}
+                    </Link>
+                    <p className="mt-1 text-xs text-ink-400">
+                      {highlight.bookAuthors.join(', ')}
+                      {highlight.pageNumber ? ` · Page ${highlight.pageNumber}` : ''}
+                      {highlight.location ? ` · ${highlight.location}` : ''}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeSavedHighlight(highlight.id)}
+                    className="shrink-0 rounded-full border border-ink-900/10 px-3 py-1.5 text-xs font-semibold text-ink-500 transition hover:border-rose-300 hover:text-rose-700"
+                    aria-label={`Remove saved highlight from ${highlight.bookTitle}`}
+                  >
+                    Unsave
+                  </button>
+                </div>
+                <blockquote className="mt-4 font-serif text-lg leading-8 text-ink-900">&ldquo;{highlight.quoteText}&rdquo;</blockquote>
+                {highlight.personalNotes && (
+                  <div className="mt-4 border-l-2 border-copper-300 pl-3">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-ink-400">Your note</p>
+                    <p className="mt-1 text-sm leading-6 text-ink-600">{highlight.personalNotes}</p>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

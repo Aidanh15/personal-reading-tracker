@@ -1,5 +1,5 @@
 import { createWriteStream, existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import https from 'https';
 import http from 'http';
 
@@ -11,7 +11,10 @@ export interface CoverSearchResult {
 }
 
 export class CoverService {
-    private static readonly COVERS_DIR = join(process.cwd(), 'data', 'covers');
+    private static readonly COVERS_DIR = process.env['COVERS_PATH'] || join(
+        dirname(process.env['DATABASE_PATH'] || join(process.cwd(), 'data', 'reading-tracker.db')),
+        'covers'
+    );
     private static readonly OPEN_LIBRARY_SEARCH_URL = 'https://openlibrary.org/search.json';
     private static readonly OPEN_LIBRARY_COVER_URL = 'https://covers.openlibrary.org/b/id';
     private static readonly GOOGLE_BOOKS_API_URL = 'https://www.googleapis.com/books/v1/volumes';
@@ -21,6 +24,10 @@ export class CoverService {
             mkdirSync(this.COVERS_DIR, { recursive: true });
             console.log(`Created covers directory: ${this.COVERS_DIR}`);
         }
+    }
+
+    static getCoversDirectory(): string {
+        return this.COVERS_DIR;
     }
 
     static async searchBookCover(title: string, authors: string[]): Promise<CoverSearchResult> {
@@ -35,10 +42,6 @@ export class CoverService {
             result = await this.searchGoogleBooks(title, authors);
             if (result.coverUrl) return result;
 
-            // Try Goodreads
-            result = await this.searchGoodreads(title, authors);
-            if (result.coverUrl) return result;
-
             console.log(`No cover found for "${title}"`);
             return { title, authors };
         } catch (error) {
@@ -51,23 +54,60 @@ export class CoverService {
         console.log(`  Trying Open Library...`);
 
         const simplifiedTitle = this.simplifyTitle(title);
-        const cleanAuthor = (authors[0] || '').replace(/[^\w\s]/g, '').trim();
+        const cleanAuthor = this.normalizeText(authors[0] || '');
 
-        const searchQuery = `${simplifiedTitle}${cleanAuthor ? ` ${cleanAuthor}` : ''}`;
-        const searchUrl = `${this.OPEN_LIBRARY_SEARCH_URL}?q=${encodeURIComponent(searchQuery)}&limit=10&fields=key,title,author_name,cover_i`;
+        const searchParams = new URLSearchParams({
+            title: simplifiedTitle,
+            limit: '20',
+            fields: 'key,title,author_name,cover_i,isbn'
+        });
+        if (cleanAuthor) searchParams.set('author', cleanAuthor);
+        const searchUrl = `${this.OPEN_LIBRARY_SEARCH_URL}?${searchParams.toString()}`;
 
         try {
             const searchResult = await this.makeHttpRequest(searchUrl);
             const data = JSON.parse(searchResult);
 
-            if (data.docs && data.docs.length > 0) {
-                for (const book of data.docs) {
-                    if (book.cover_i) {
-                        const coverUrl = `${this.OPEN_LIBRARY_COVER_URL}/${book.cover_i}-M.jpg`;
-                        console.log(`  Found Open Library cover: ${coverUrl}`);
-                        return { title, authors, coverUrl };
-                    }
-                }
+            const coverUrl = await this.findOpenLibraryCover(data.docs || [], title, authors, false);
+            if (coverUrl) return { title, authors, coverUrl };
+
+            // Translated works can be indexed under their original-language title.
+            // A relevance search lets us reuse that work's cover when the author agrees.
+            const fallbackQuery = `title:"${simplifiedTitle}"${cleanAuthor ? ` author:"${cleanAuthor}"` : ''}`;
+            const fallbackUrl = `${this.OPEN_LIBRARY_SEARCH_URL}?q=${encodeURIComponent(fallbackQuery)}&limit=20&fields=key,title,author_name,cover_i,isbn`;
+            const fallbackData = JSON.parse(await this.makeHttpRequest(fallbackUrl));
+            const translatedCoverUrl = await this.findOpenLibraryCover(
+                fallbackData.docs || [],
+                title,
+                authors,
+                true
+            );
+            if (translatedCoverUrl) {
+                return { title, authors, coverUrl: translatedCoverUrl };
+            }
+
+            // Some records are not indexed under their author field. Retry by
+            // title only, but retain only independently matching authors to
+            // avoid same-title false positives.
+            const titleOnlyParams = new URLSearchParams({
+                title: simplifiedTitle,
+                limit: '20',
+                fields: 'key,title,author_name,cover_i,isbn'
+            });
+            const titleOnlyData = JSON.parse(await this.makeHttpRequest(
+                `${this.OPEN_LIBRARY_SEARCH_URL}?${titleOnlyParams.toString()}`
+            ));
+            const authorMatchedBooks = (titleOnlyData.docs || []).filter((book: any) =>
+                this.authorsLikelyMatch(authors, book.author_name || [])
+            );
+            const titleOnlyCoverUrl = await this.findOpenLibraryCover(
+                authorMatchedBooks,
+                title,
+                authors,
+                false
+            );
+            if (titleOnlyCoverUrl) {
+                return { title, authors, coverUrl: titleOnlyCoverUrl };
             }
         } catch (error) {
             console.log(`  Open Library search failed:`, error);
@@ -80,23 +120,37 @@ export class CoverService {
         console.log(`  Trying Google Books...`);
 
         const simplifiedTitle = this.simplifyTitle(title);
-        const cleanAuthor = (authors[0] || '').replace(/[^\w\s]/g, '').trim();
+        const cleanAuthor = this.normalizeText(authors[0] || '');
 
-        const searchQuery = `${simplifiedTitle}${cleanAuthor ? ` ${cleanAuthor}` : ''}`;
-        const searchUrl = `${this.GOOGLE_BOOKS_API_URL}?q=${encodeURIComponent(searchQuery)}&maxResults=5&fields=items(volumeInfo(imageLinks))`;
+        const searchQuery = `intitle:"${simplifiedTitle}"${cleanAuthor ? ` inauthor:"${cleanAuthor}"` : ''}`;
+        const apiKey = process.env['GOOGLE_BOOKS_API_KEY'];
+        const searchUrl = `${this.GOOGLE_BOOKS_API_URL}?q=${encodeURIComponent(searchQuery)}&maxResults=10&printType=books&fields=items(volumeInfo(title,authors,imageLinks))${apiKey ? `&key=${encodeURIComponent(apiKey)}` : ''}`;
 
         try {
             const searchResult = await this.makeHttpRequest(searchUrl);
             const data = JSON.parse(searchResult);
 
-            if (data.items && data.items.length > 0) {
-                for (const item of data.items) {
-                    const imageLinks = item.volumeInfo?.imageLinks;
-                    if (imageLinks?.thumbnail) {
-                        const coverUrl = imageLinks.thumbnail.replace('http://', 'https://');
-                        console.log(`  Found Google Books cover: ${coverUrl}`);
-                        return { title, authors, coverUrl };
-                    }
+            const candidates = (data.items || [])
+                .map((item: any) => ({
+                    item,
+                    score: this.scoreCandidate(
+                        title,
+                        authors,
+                        item.volumeInfo?.title || '',
+                        item.volumeInfo?.authors || []
+                    )
+                }))
+                .filter(({ item, score }: any) => score >= 0.62 && item.volumeInfo?.imageLinks)
+                .sort((a: any, b: any) => b.score - a.score);
+
+            for (const { item, score } of candidates) {
+                const imageLinks = item.volumeInfo.imageLinks;
+                const coverUrl = imageLinks.extraLarge || imageLinks.large || imageLinks.medium ||
+                    imageLinks.small || imageLinks.thumbnail || imageLinks.smallThumbnail;
+                if (coverUrl) {
+                    const secureCoverUrl = coverUrl.replace('http://', 'https://').replace('&edge=curl', '');
+                    console.log(`  Found Google Books cover (${score.toFixed(2)} match): ${secureCoverUrl}`);
+                    return { title, authors, coverUrl: secureCoverUrl };
                 }
             }
         } catch (error) {
@@ -106,57 +160,12 @@ export class CoverService {
         return { title, authors };
     }
 
-    private static async searchGoodreads(title: string, authors: string[]): Promise<CoverSearchResult> {
-        console.log(`  Trying Goodreads...`);
-
-        const simplifiedTitle = this.simplifyTitle(title);
-        const cleanAuthor = (authors[0] || '').replace(/[^\w\s]/g, '').trim();
-
-        const searchQuery = `${simplifiedTitle}${cleanAuthor ? ` ${cleanAuthor}` : ''}`;
-        const searchUrl = `https://www.goodreads.com/search?q=${encodeURIComponent(searchQuery)}`;
-
-        try {
-            const headers = {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            };
-
-            const html = await this.makeHttpRequestWithHeaders(searchUrl, headers);
-            const coverUrlRegex = /<img[^>]+src="([^"]*books\/[^"]*\.(jpg|jpeg|png))"[^>]*>/gi;
-            const matches = html.match(coverUrlRegex);
-
-            if (matches && matches.length > 0) {
-                for (const match of matches.slice(0, 3)) {
-                    const srcMatch = match.match(/src="([^"]+)"/);
-                    if (srcMatch && srcMatch[1]) {
-                        let imageUrl = srcMatch[1];
-
-                        if (imageUrl.startsWith('//')) {
-                            imageUrl = 'https:' + imageUrl;
-                        }
-
-                        if (!imageUrl.includes('nophoto') && !imageUrl.includes('blank')) {
-                            try {
-                                await this.testUrl(imageUrl);
-                                console.log(`  Found Goodreads cover: ${imageUrl}`);
-                                return { title, authors, coverUrl: imageUrl };
-                            } catch {
-                                continue;
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (error) {
-            console.log(`  Goodreads search failed:`, error);
-        }
-
-        return { title, authors };
-    }
-
     private static simplifyTitle(title: string): string {
         return title
-            // Remove subtitles after colon or dash (most important for your case)
-            .replace(/[:\-–—].+$/, '')
+            // Remove subtitles after a colon or a spaced dash, but preserve titles
+            // such as Moby-Dick and Catch-22.
+            .replace(/:.+$/, '')
+            .replace(/\s[-–—]\s.+$/, '')
             // Remove series information in parentheses or brackets
             .replace(/\s*[\(\[][^\)\]]*[\)\]]\s*$/g, '')
             // Remove common publisher/edition markers anywhere in title
@@ -180,6 +189,93 @@ export class CoverService {
             // Clean up extra whitespace and punctuation
             .replace(/\s+/g, ' ')
             .replace(/[,;]\s*$/, '')
+            .trim();
+    }
+
+    private static scoreCandidate(
+        expectedTitle: string,
+        expectedAuthors: string[],
+        candidateTitle: string,
+        candidateAuthors: string[]
+    ): number {
+        const expected = this.normalizeWords(this.simplifyTitle(expectedTitle));
+        const candidate = this.normalizeWords(this.simplifyTitle(candidateTitle));
+        if (!expected.length || !candidate.length) return 0;
+
+        const candidateWords = new Set(candidate);
+        const sharedTitleWords = expected.filter(word => candidateWords.has(word)).length;
+        const titleScore = this.normalizeText(this.simplifyTitle(expectedTitle)) ===
+            this.normalizeText(this.simplifyTitle(candidateTitle))
+            ? 1
+            : sharedTitleWords / Math.max(expected.length, candidate.length);
+
+        const expectedAuthorWords = this.normalizeWords(expectedAuthors.join(' '));
+        const candidateAuthorWords = new Set(this.normalizeWords(candidateAuthors.join(' ')));
+        const authorScore = expectedAuthorWords.length === 0 || candidateAuthorWords.size === 0
+            ? 0.5
+            : expectedAuthorWords.filter(word => candidateAuthorWords.has(word)).length / expectedAuthorWords.length;
+
+        return (titleScore * 0.78) + (authorScore * 0.22);
+    }
+
+    private static async findOpenLibraryCover(
+        books: any[],
+        title: string,
+        authors: string[],
+        allowTranslatedTitle: boolean
+    ): Promise<string | undefined> {
+        const candidates = books
+            .map((book: any) => ({
+                book,
+                score: this.scoreCandidate(title, authors, book.title || '', book.author_name || [])
+            }))
+            .filter(({ book, score }: any) =>
+                (book.cover_i || book.isbn?.length) &&
+                (score >= 0.62 || (allowTranslatedTitle && this.authorsLikelyMatch(authors, book.author_name || [])))
+            )
+            .sort((a: any, b: any) => b.score - a.score);
+
+        for (const { book, score } of candidates) {
+            if (book.cover_i) {
+                const coverUrl = `${this.OPEN_LIBRARY_COVER_URL}/${book.cover_i}-L.jpg`;
+                console.log(`  Found Open Library cover (${score.toFixed(2)} match): ${coverUrl}`);
+                return coverUrl;
+            }
+
+            for (const isbn of (book.isbn || []).slice(0, 5)) {
+                const coverUrl = `https://covers.openlibrary.org/b/isbn/${encodeURIComponent(isbn)}-L.jpg?default=false`;
+                try {
+                    await this.testUrl(coverUrl);
+                    console.log(`  Found Open Library ISBN cover (${score.toFixed(2)} match): ${coverUrl}`);
+                    return coverUrl;
+                } catch {
+                    // Try the next edition ISBN.
+                }
+            }
+        }
+
+        return undefined;
+    }
+
+    private static authorsLikelyMatch(expectedAuthors: string[], candidateAuthors: string[]): boolean {
+        const expected = new Set(this.normalizeWords(expectedAuthors.join(' ')).filter(word => word.length > 3));
+        const candidate = this.normalizeWords(candidateAuthors.join(' ')).filter(word => word.length > 3);
+        return candidate.some(word => expected.has(word));
+    }
+
+    private static normalizeWords(value: string): string[] {
+        return this.normalizeText(value)
+            .split(' ')
+            .filter(word => word.length > 1 && !['a', 'an', 'and', 'of', 'the'].includes(word));
+    }
+
+    private static normalizeText(value: string): string {
+        return value
+            .normalize('NFKD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, ' ')
+            .replace(/\s+/g, ' ')
             .trim();
     }
 
@@ -261,35 +357,6 @@ export class CoverService {
                 request.destroy();
                 reject(new Error('Timeout'));
             });
-        });
-    }
-
-    private static makeHttpRequestWithHeaders(url: string, headers: Record<string, string>): Promise<string> {
-        return new Promise((resolve, reject) => {
-            const client = url.startsWith('https:') ? https : http;
-            const urlObj = new URL(url);
-            const options = {
-                hostname: urlObj.hostname,
-                port: urlObj.port,
-                path: urlObj.pathname + urlObj.search,
-                method: 'GET',
-                headers: headers
-            };
-            const request = client.request(options, (response) => {
-                if (response.statusCode !== 200) {
-                    reject(new Error(`HTTP ${response.statusCode}`));
-                    return;
-                }
-                let data = '';
-                response.on('data', (chunk) => { data += chunk; });
-                response.on('end', () => { resolve(data); });
-            });
-            request.on('error', reject);
-            request.setTimeout(15000, () => {
-                request.destroy();
-                reject(new Error('Timeout'));
-            });
-            request.end();
         });
     }
 

@@ -25,6 +25,12 @@ vi.mock('@heroicons/react/24/outline', () => ({
   ArrowLeftIcon: (props: any) => {
     return React.createElement('svg', { 'data-testid': 'arrow-left-icon', ...props });
   },
+  ArrowRightIcon: (props: any) => {
+    return React.createElement('svg', { 'data-testid': 'arrow-right-icon', ...props });
+  },
+  ArrowUpRightIcon: (props: any) => {
+    return React.createElement('svg', { 'data-testid': 'arrow-up-right-icon', ...props });
+  },
   ArrowPathIcon: (props: any) => {
     return React.createElement('svg', { 'data-testid': 'arrow-path-icon', ...props });
   },
@@ -33,6 +39,12 @@ vi.mock('@heroicons/react/24/outline', () => ({
   },
   BookOpenIcon: (props: any) => {
     return React.createElement('svg', { 'data-testid': 'book-open-icon', ...props });
+  },
+  BookmarkSquareIcon: (props: any) => {
+    return React.createElement('svg', { 'data-testid': 'bookmark-square-icon', ...props });
+  },
+  ChartBarIcon: (props: any) => {
+    return React.createElement('svg', { 'data-testid': 'chart-bar-icon', ...props });
   },
   CheckIcon: (props: any) => {
     return React.createElement('svg', { 'data-testid': 'check-icon', ...props });

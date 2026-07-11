@@ -60,10 +60,72 @@ export class DatabaseConnection {
             const schemaPath = join(__dirname, 'schema.sql');
             const schema = readFileSync(schemaPath, 'utf-8');
             this.db.exec(schema);
+            this.ensureDidNotFinishStatus();
+            // Recreate indexes and triggers if the compatibility migration rebuilt books.
+            this.db.exec(schema);
             console.log('Database schema initialized successfully');
         } catch (error) {
             console.error('Failed to initialize database schema:', error);
             throw error;
+        }
+    }
+
+    /**
+     * SQLite cannot alter a CHECK constraint in place. Existing installations
+     * therefore need a one-time, data-preserving table rebuild before DNF can
+     * be stored. New databases already contain the updated constraint.
+     */
+    private ensureDidNotFinishStatus(): void {
+        const booksTable = this.db.prepare(`
+            SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'books'
+        `).get() as { sql: string } | undefined;
+
+        if (!booksTable || booksTable.sql.includes('did_not_finish')) {
+            return;
+        }
+
+        this.db.pragma('foreign_keys = OFF');
+        try {
+            this.db.exec(`
+                BEGIN;
+                DROP TABLE IF EXISTS books_dnf_upgrade;
+                CREATE TABLE books_dnf_upgrade (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    authors TEXT NOT NULL,
+                    position INTEGER NOT NULL DEFAULT 0,
+                    status TEXT DEFAULT 'not_started' CHECK (status IN ('not_started', 'in_progress', 'completed', 'did_not_finish')),
+                    progress_percentage INTEGER DEFAULT 0 CHECK (progress_percentage >= 0 AND progress_percentage <= 100),
+                    total_pages INTEGER CHECK (total_pages > 0),
+                    current_page INTEGER DEFAULT 0 CHECK (current_page >= 0),
+                    started_date TEXT,
+                    completed_date TEXT,
+                    personal_rating INTEGER CHECK (personal_rating >= 1 AND personal_rating <= 5),
+                    personal_review TEXT,
+                    cover_image_url TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+                INSERT INTO books_dnf_upgrade (
+                    id, title, authors, position, status, progress_percentage,
+                    total_pages, current_page, started_date, completed_date,
+                    personal_rating, personal_review, cover_image_url, created_at, updated_at
+                )
+                SELECT
+                    id, title, authors, position, status, progress_percentage,
+                    total_pages, current_page, started_date, completed_date,
+                    personal_rating, personal_review, cover_image_url, created_at, updated_at
+                FROM books;
+                DROP TABLE books;
+                ALTER TABLE books_dnf_upgrade RENAME TO books;
+                COMMIT;
+            `);
+            console.log('Database upgraded to support did-not-finish books');
+        } catch (error) {
+            if (this.db.inTransaction) this.db.exec('ROLLBACK');
+            throw error;
+        } finally {
+            this.db.pragma('foreign_keys = ON');
         }
     }
 

@@ -1,0 +1,13 @@
+.git
+.github
+**/node_modules
+**/dist
+**/coverage
+backups
+data
+imports
+logs
+.env*
+npm-debug.log*
+playwright-report
+test-results

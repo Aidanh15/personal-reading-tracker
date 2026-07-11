@@ -27,6 +27,7 @@ export class BookQueries {
           WHEN 'in_progress' THEN 1 
           WHEN 'not_started' THEN 2 
           WHEN 'completed' THEN 3 
+          WHEN 'did_not_finish' THEN 4
         END,
         position ASC,
         created_at DESC
@@ -164,7 +165,7 @@ export class BookQueries {
       }
     }
 
-    if (progressData.status === 'in_progress' && !updatesCompletedDate) {
+    if ((progressData.status === 'in_progress' || progressData.status === 'did_not_finish') && !updatesCompletedDate) {
       updates.push('completed_date = ?');
       values.push(null);
     }
@@ -212,7 +213,7 @@ export class BookQueries {
       }
     }
 
-    if (statusData.status === 'in_progress' && !updatesCompletedDate) {
+    if ((statusData.status === 'in_progress' || statusData.status === 'did_not_finish') && !updatesCompletedDate) {
       updates.push('completed_date = ?');
       values.push(null);
     }
@@ -354,6 +355,7 @@ export class BookQueries {
           WHEN 'in_progress' THEN 1 
           WHEN 'not_started' THEN 2 
           WHEN 'completed' THEN 3 
+          WHEN 'did_not_finish' THEN 4
         END,
         position ASC
     `;

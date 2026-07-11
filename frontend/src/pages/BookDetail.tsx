@@ -183,6 +183,7 @@ function BookDetail() {
                   {book.status === 'not_started' && 'Not Started'}
                   {book.status === 'in_progress' && 'In Progress'}
                   {book.status === 'completed' && 'Completed'}
+                  {book.status === 'did_not_finish' && 'Did Not Finish'}
                 </span>
               </div>
               

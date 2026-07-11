@@ -281,7 +281,7 @@ const HighlightManager: React.FC<HighlightManagerProps> = ({
               setSortBy(newSortBy);
               setSortOrder(newSortOrder);
             }}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="rounded-full border border-ink-900/15 bg-paper-50 px-3 py-2 text-sm text-ink-700 focus:border-copper-500/50 focus:outline-none focus:ring-2 focus:ring-copper-400/20"
           >
             <option value="date-desc">Newest First</option>
             <option value="date-asc">Oldest First</option>
@@ -430,7 +430,7 @@ const HighlightManager: React.FC<HighlightManagerProps> = ({
               value={highlightForm.quoteText}
               onChange={(e) => setHighlightForm(prev => ({ ...prev, quoteText: e.target.value }))}
               rows={4}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full rounded-xl border border-ink-900/15 bg-paper-50 px-3 py-2 focus:border-copper-500/50 focus:outline-none focus:ring-2 focus:ring-copper-400/20"
               placeholder="Enter the highlighted text..."
               required
             />

@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS books (
     title TEXT NOT NULL,
     authors TEXT NOT NULL, -- JSON array of author names
     position INTEGER NOT NULL DEFAULT 0, -- Position in reading order
-    status TEXT DEFAULT 'not_started' CHECK (status IN ('not_started', 'in_progress', 'completed')),
+    status TEXT DEFAULT 'not_started' CHECK (status IN ('not_started', 'in_progress', 'completed', 'did_not_finish')),
     progress_percentage INTEGER DEFAULT 0 CHECK (progress_percentage >= 0 AND progress_percentage <= 100),
     total_pages INTEGER CHECK (total_pages > 0),
     current_page INTEGER DEFAULT 0 CHECK (current_page >= 0),

@@ -245,6 +245,13 @@ export const reviewApi = {
     });
   },
 
+  async getSaved(): Promise<ReviewHighlight[]> {
+    return retryRequest(async () => {
+      const response: AxiosResponse<{highlights: ReviewHighlight[]}> = await api.get('/review/saved');
+      return response.data.highlights;
+    });
+  },
+
   async recordAction(id: number, action: ReviewAction): Promise<{ highlight: ReviewHighlight; summary: ReviewSummary }> {
     return retryRequest(async () => {
       const response: AxiosResponse<{highlight: ReviewHighlight; summary: ReviewSummary}> = await api.post(`/review/${id}`, { action });

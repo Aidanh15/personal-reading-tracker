@@ -316,6 +316,21 @@ describe('Books API Integration Tests', () => {
       expect(response.body.book.status).toBe('completed');
       expect(response.body.book.completedDate).toBe('2024-01-20T15:30:00.000Z');
     });
+
+    it('should allow a book to be marked did not finish', async () => {
+      const dnfUpdate = { status: 'did_not_finish' as const };
+      const dnfBook = { ...mockBooks[1]!, status: 'did_not_finish' as const };
+      mockBookQueries.getBookById.mockReturnValue(mockBooks[1]!);
+      mockBookQueries.updateBookStatus.mockReturnValue(dnfBook);
+
+      const response = await request(app)
+        .put('/api/books/2/status')
+        .send(dnfUpdate)
+        .expect(200);
+
+      expect(response.body.book.status).toBe('did_not_finish');
+      expect(mockBookQueries.updateBookStatus).toHaveBeenCalledWith(2, dnfUpdate);
+    });
   });
 
   describe('PUT /api/books/reorder', () => {

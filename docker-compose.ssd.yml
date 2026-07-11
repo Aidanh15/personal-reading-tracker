@@ -26,6 +26,7 @@ services:
       - SQLITE_TEMP_STORE=memory
       - SQLITE_SYNCHRONOUS=NORMAL
       - SQLITE_WAL_MODE=true
+      - GOOGLE_BOOKS_API_KEY=${GOOGLE_BOOKS_API_KEY:-}
     volumes:
       - /mnt/SSD/projects/personal-reading-tracker/data:/app/data
       - /mnt/SSD/projects/personal-reading-tracker/logs:/app/logs

@@ -96,6 +96,34 @@ export class ReviewQueries {
     };
   }
 
+  static getSavedHighlights(): ReviewHighlight[] {
+    const rows = db.prepare(`
+      SELECT
+        h.id,
+        h.book_id as bookId,
+        h.quote_text as quoteText,
+        h.page_number as pageNumber,
+        h.location,
+        h.personal_notes as personalNotes,
+        h.highlight_date as highlightDate,
+        h.created_at as createdAt,
+        h.updated_at as updatedAt,
+        b.title as bookTitle,
+        b.authors as bookAuthors,
+        hr.last_reviewed_at as lastReviewedAt,
+        hr.next_review_at as nextReviewAt,
+        hr.review_count as reviewCount,
+        hr.favorite as favorite
+      FROM highlight_reviews hr
+      JOIN highlights h ON h.id = hr.highlight_id
+      JOIN books b ON b.id = h.book_id
+      WHERE hr.favorite = 1
+      ORDER BY hr.updated_at DESC, h.id DESC
+    `).all() as ReviewRow[];
+
+    return rows.map(this.mapReviewRow);
+  }
+
   static recordAction(highlightId: number, action: ReviewAction): ReviewHighlight | null {
     const existing = db.prepare('SELECT id FROM highlights WHERE id = ?').get(highlightId);
     if (!existing) {
