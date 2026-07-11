@@ -7,6 +7,9 @@ import {
   HighlightFormData, 
   ProgressUpdateData,
   SearchFilters,
+  ReviewAction,
+  ReviewHighlight,
+  ReviewSummary,
   ApiError 
 } from '../types';
 
@@ -67,9 +70,11 @@ const shouldRetry = (error: any): boolean => {
   return false;
 };
 
+const apiBaseURL = import.meta.env.VITE_API_URL || '/api';
+
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: apiBaseURL,
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
@@ -169,7 +174,7 @@ export const booksApi = {
   // Update book positions (for reordering)
   async updatePositions(bookIds: number[]): Promise<void> {
     return retryRequest(async () => {
-      await api.put('/books/positions', { bookIds });
+      await api.put('/books/reorder', { bookIds });
     });
   },
 
@@ -220,6 +225,37 @@ export const highlightsApi = {
   async delete(id: number): Promise<void> {
     return retryRequest(async () => {
       await api.delete(`/highlights/${id}`);
+    });
+  },
+};
+
+// Review API with retry logic
+export const reviewApi = {
+  async getSummary(): Promise<ReviewSummary> {
+    return retryRequest(async () => {
+      const response: AxiosResponse<{summary: ReviewSummary}> = await api.get('/review/summary');
+      return response.data.summary;
+    });
+  },
+
+  async getDue(limit = 10): Promise<ReviewHighlight[]> {
+    return retryRequest(async () => {
+      const response: AxiosResponse<{highlights: ReviewHighlight[]}> = await api.get(`/review/due?limit=${limit}`);
+      return response.data.highlights;
+    });
+  },
+
+  async getSaved(): Promise<ReviewHighlight[]> {
+    return retryRequest(async () => {
+      const response: AxiosResponse<{highlights: ReviewHighlight[]}> = await api.get('/review/saved');
+      return response.data.highlights;
+    });
+  },
+
+  async recordAction(id: number, action: ReviewAction): Promise<{ highlight: ReviewHighlight; summary: ReviewSummary }> {
+    return retryRequest(async () => {
+      const response: AxiosResponse<{highlight: ReviewHighlight; summary: ReviewSummary}> = await api.post(`/review/${id}`, { action });
+      return response.data;
     });
   },
 };

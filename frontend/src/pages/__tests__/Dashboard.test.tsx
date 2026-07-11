@@ -10,6 +10,14 @@ import * as api from '../../services/api';
 vi.mock('../../services/api');
 const mockedApi = api as any;
 
+const mockReviewSummary = {
+  totalHighlights: 4,
+  dueCount: 2,
+  reviewedToday: 1,
+  favoriteCount: 0,
+  archivedCount: 0,
+};
+
 // Mock data
 const mockBooks: Book[] = [
   {
@@ -71,6 +79,9 @@ const MockedDashboard = () => (
 describe('Dashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockedApi.reviewApi = {
+      getSummary: vi.fn().mockResolvedValue(mockReviewSummary),
+    } as any;
   });
 
   describe('Loading and Error States', () => {
@@ -137,7 +148,8 @@ describe('Dashboard', () => {
 
       await waitFor(() => {
         expect(screen.getByText('Reading Dashboard')).toBeInTheDocument();
-        expect(screen.getByText('Follow your AI-optimized reading sequence and track progress')).toBeInTheDocument();
+        expect(screen.getByText('Follow your reading order, review saved passages, and track progress')).toBeInTheDocument();
+        expect(screen.getByText('Daily Review')).toBeInTheDocument();
       });
     });
 
@@ -146,9 +158,9 @@ describe('Dashboard', () => {
 
       await waitFor(() => {
         // Check for stats labels
-        expect(screen.getByText('Total Books')).toBeInTheDocument();
+        expect(screen.getByText('In the library')).toBeInTheDocument();
         expect(screen.getAllByText('Reading').length).toBeGreaterThan(0);
-        expect(screen.getByText('Completed')).toBeInTheDocument();
+        expect(screen.getByText('Books completed')).toBeInTheDocument();
       });
     });
 
@@ -157,17 +169,17 @@ describe('Dashboard', () => {
 
       await waitFor(() => {
         expect(screen.getByText('Currently Reading')).toBeInTheDocument();
-        expect(screen.getByText('Second Book')).toBeInTheDocument();
+        expect(screen.getAllByText('Second Book').length).toBeGreaterThan(0);
       });
     });
 
-    it('displays up next section with optimized order', async () => {
+    it('displays up next section with reading order', async () => {
       render(<MockedDashboard />);
 
       await waitFor(() => {
-        expect(screen.getByText('Optimized reading order')).toBeInTheDocument();
-        expect(screen.getByText('First Book')).toBeInTheDocument();
-        expect(screen.getByText('Fourth Book')).toBeInTheDocument();
+        expect(screen.getByText(/Your reading order/)).toBeInTheDocument();
+        expect(screen.getAllByText('First Book').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('Fourth Book').length).toBeGreaterThan(0);
       });
     });
 
@@ -187,7 +199,7 @@ describe('Dashboard', () => {
       fireEvent.click(showButton);
 
       await waitFor(() => {
-        expect(screen.getByText('Third Book')).toBeInTheDocument();
+        expect(screen.getAllByText('Third Book').length).toBeGreaterThan(0);
         expect(screen.getByText('Hide')).toBeInTheDocument();
       });
 
@@ -215,11 +227,11 @@ describe('Dashboard', () => {
       await waitFor(() => {
         // Currently Reading section should have in_progress books
         expect(screen.getByText('Currently Reading')).toBeInTheDocument();
-        expect(screen.getByText('Second Book')).toBeInTheDocument();
+        expect(screen.getAllByText('Second Book').length).toBeGreaterThan(0);
 
         // Up Next section should have not_started books
-        expect(screen.getByText('First Book')).toBeInTheDocument();
-        expect(screen.getByText('Fourth Book')).toBeInTheDocument();
+        expect(screen.getAllByText('First Book').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('Fourth Book').length).toBeGreaterThan(0);
       });
     });
 
@@ -228,8 +240,8 @@ describe('Dashboard', () => {
 
       await waitFor(() => {
         // Check that books are displayed (position order is maintained by the component)
-        expect(screen.getByText('First Book')).toBeInTheDocument();
-        expect(screen.getByText('Fourth Book')).toBeInTheDocument();
+        expect(screen.getAllByText('First Book').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('Fourth Book').length).toBeGreaterThan(0);
       });
     });
 
@@ -272,9 +284,9 @@ describe('Dashboard', () => {
 
       await waitFor(() => {
         // Check for responsive grid classes in stats section
-        const statsSection = screen.getByText('Total Books').closest('.grid');
-        expect(statsSection).toHaveClass('grid-cols-2');
-        expect(statsSection).toHaveClass('md:grid-cols-4');
+        const statsSection = screen.getByText('In the library').closest('section');
+        expect(statsSection).toHaveClass('sm:grid-cols-2');
+        expect(statsSection).toHaveClass('lg:grid-cols-4');
       });
     });
 
@@ -284,7 +296,7 @@ describe('Dashboard', () => {
       await waitFor(() => {
         // Check that the dashboard renders with responsive layout
         expect(screen.getByText('Reading Dashboard')).toBeInTheDocument();
-        expect(screen.getByText('Add Book')).toBeInTheDocument();
+        expect(screen.getByText('Start Review')).toBeInTheDocument();
       });
     });
   });

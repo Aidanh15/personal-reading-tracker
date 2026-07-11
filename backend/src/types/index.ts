@@ -1,11 +1,13 @@
 // Core data model interfaces for Personal Reading Tracker
 
+export type ReadingStatus = 'not_started' | 'in_progress' | 'completed' | 'did_not_finish';
+
 export interface Book {
   id: number;
   title: string;
   authors: string[];
   position: number;
-  status: 'not_started' | 'in_progress' | 'completed';
+  status: ReadingStatus;
   progressPercentage: number;
   totalPages?: number;
   currentPage: number;
@@ -30,6 +32,25 @@ export interface Highlight {
   updatedAt: string;
 }
 
+export interface ReviewHighlight extends Highlight {
+  bookTitle: string;
+  bookAuthors: string[];
+  lastReviewedAt?: string;
+  nextReviewAt?: string;
+  reviewCount: number;
+  favorite: boolean;
+}
+
+export type ReviewAction = 'read' | 'later' | 'favorite' | 'archive';
+
+export interface ReviewSummary {
+  totalHighlights: number;
+  dueCount: number;
+  reviewedToday: number;
+  favoriteCount: number;
+  archivedCount: number;
+}
+
 export interface ReadingSession {
   id: number;
   bookId: number;
@@ -45,6 +66,7 @@ export interface CreateBookRequest {
   title: string;
   authors: string[];
   position?: number;
+  status?: ReadingStatus;
   totalPages?: number;
   coverImageUrl?: string;
 }
@@ -53,10 +75,15 @@ export interface UpdateBookProgressRequest {
   currentPage?: number;
   progressPercentage?: number;
   totalPages?: number;
+  status?: ReadingStatus;
+  startedDate?: string;
+  completedDate?: string;
+  personalRating?: number;
+  personalReview?: string;
 }
 
 export interface UpdateBookStatusRequest {
-  status: 'not_started' | 'in_progress' | 'completed';
+  status: ReadingStatus;
   startedDate?: string;
   completedDate?: string;
 }
@@ -82,7 +109,7 @@ export interface ReorderBooksRequest {
 export interface SearchRequest {
   query: string;
   type?: 'books' | 'highlights' | 'all';
-  status?: 'not_started' | 'in_progress' | 'completed';
+  status?: ReadingStatus;
 }
 
 export interface SearchResult {
@@ -107,7 +134,7 @@ export interface KindleImportPreview {
 
 export interface BookCategorization {
   bookIndex: number;
-  status: 'not_started' | 'in_progress' | 'completed';
+  status: ReadingStatus;
   position?: number;
 }
 

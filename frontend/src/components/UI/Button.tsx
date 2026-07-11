@@ -16,12 +16,12 @@ function Button({
   children,
   ...props 
 }: ButtonProps) {
-  const baseClasses = 'inline-flex items-center justify-center font-medium rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
+  const baseClasses = 'inline-flex items-center justify-center font-semibold rounded-full transition duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
   
   const variantClasses = {
-    primary: 'bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-500',
-    secondary: 'bg-gray-200 hover:bg-gray-300 text-gray-800 focus:ring-gray-500',
-    danger: 'bg-red-600 hover:bg-red-700 text-white focus:ring-red-500'
+    primary: 'bg-ink-950 hover:-translate-y-0.5 hover:bg-copper-600 text-paper-50 shadow-sm focus:ring-copper-500',
+    secondary: 'border border-ink-900/15 bg-paper-50 hover:border-copper-500/50 hover:text-copper-700 text-ink-700 focus:ring-copper-400',
+    danger: 'bg-red-700 hover:bg-red-800 text-white focus:ring-red-600'
   };
   
   const sizeClasses = {

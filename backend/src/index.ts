@@ -11,6 +11,7 @@ import { monitoring } from './utils/monitoring';
 
 import { booksRouter } from './routes/books';
 import { highlightsRouter } from './routes/highlights';
+import { reviewRouter } from './routes/review';
 import { searchRouter } from './routes/search';
 
 // Load environment variables
@@ -131,8 +132,8 @@ app.get('/api/health', async (_req, res) => {
             environment: NODE_ENV,
             uptime: process.uptime(),
             memory: {
-                used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
-                total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+                used: metrics.memory.used,
+                total: metrics.memory.total,
                 external: Math.round(process.memoryUsage().external / 1024 / 1024),
                 percentage: metrics.memory.percentage
             },
@@ -225,6 +226,7 @@ app.post('/api/logs/rotate', (_req, res) => {
 // API routes
 app.use('/api/books', booksRouter);
 app.use('/api/highlights', highlightsRouter);
+app.use('/api/review', reviewRouter);
 app.use('/api/search', searchRouter);
 
 // Test endpoint for Google Images search
@@ -340,7 +342,7 @@ app.get('/api/cover-status', async (_req, res) => {
 });
 
 // Update covers for books that don't have them
-app.post('/api/update-missing-covers', async (_req, res) => {
+app.post('/api/update-missing-covers', async (req, res) => {
     try {
         const { CoverService } = await import('./services/coverService');
         const { getDatabase } = await import('./database/connection');
@@ -357,21 +359,31 @@ app.post('/api/update-missing-covers', async (_req, res) => {
         });
 
         // Get books without covers or with invalid cover URLs
+        const masterOnly = req.query['scope'] === 'master';
+        const requestedLimit = Number(req.query['limit']);
+        const resultLimit = Number.isFinite(requestedLimit)
+            ? Math.max(1, Math.min(Math.floor(requestedLimit), 200))
+            : 200;
+        const scopeClause = masterOnly
+            ? "AND position BETWEEN 17 AND 150 AND status != 'completed'"
+            : '';
         const booksWithoutCovers = db.prepare(`
-            SELECT id, title, authors FROM books 
-            WHERE cover_image_url IS NULL 
+            SELECT id, title, authors, cover_image_url FROM books
+            WHERE (cover_image_url IS NULL
                OR cover_image_url = '' 
                OR cover_image_url = 'null' 
                OR cover_image_url = 'undefined'
                OR cover_image_url LIKE '%undefined%'
                OR cover_image_url = '/covers/.jpg'
-               OR cover_image_url LIKE '/covers/%.jpg'
+               OR cover_image_url LIKE '/covers/%.jpg')
+              ${scopeClause}
+            ORDER BY position, id
         `).all() as any[];
 
         // Filter out books that have valid cover files
         const fs = await import('fs');
         const path = await import('path');
-        const coversDir = path.join(process.cwd(), 'data', 'covers');
+        const coversDir = CoverService.getCoversDirectory();
 
         const booksNeedingCovers = booksWithoutCovers.filter(book => {
             if (!book.cover_image_url || book.cover_image_url === '/covers/.jpg') {
@@ -396,7 +408,7 @@ app.post('/api/update-missing-covers', async (_req, res) => {
             } catch {
                 return true; // Error checking file, assume needs cover
             }
-        });
+        }).slice(0, resultLimit);
 
         console.log(`📊 Found ${booksNeedingCovers.length} books needing covers (after file validation)`);
 
@@ -441,9 +453,10 @@ app.post('/api/update-missing-covers', async (_req, res) => {
         }
 
         return res.json({
-            message: `Updated covers for ${updated}/${booksWithoutCovers.length} books`,
+            message: `Updated covers for ${updated}/${booksNeedingCovers.length} attempted books`,
             updated,
-            total: booksWithoutCovers.length,
+            attempted: booksNeedingCovers.length,
+            remainingCandidates: Math.max(0, booksWithoutCovers.length - booksNeedingCovers.length),
             results
         });
     } catch (error) {

@@ -20,7 +20,8 @@ build/
 *.db
 *.sqlite
 *.sqlite3
-data/
+/data/
+/preview-data/
 backup-*.db
 
 # Logs
@@ -109,9 +110,6 @@ temp/
 .Trashes
 ehthumbs.db
 Thumbs.db
-
-# Docker
-.dockerignore
 
 # Playwright
 test-results/

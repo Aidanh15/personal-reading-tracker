@@ -25,11 +25,35 @@ vi.mock('@heroicons/react/24/outline', () => ({
   ArrowLeftIcon: (props: any) => {
     return React.createElement('svg', { 'data-testid': 'arrow-left-icon', ...props });
   },
+  ArrowRightIcon: (props: any) => {
+    return React.createElement('svg', { 'data-testid': 'arrow-right-icon', ...props });
+  },
+  ArrowUpRightIcon: (props: any) => {
+    return React.createElement('svg', { 'data-testid': 'arrow-up-right-icon', ...props });
+  },
+  ArrowPathIcon: (props: any) => {
+    return React.createElement('svg', { 'data-testid': 'arrow-path-icon', ...props });
+  },
+  ArchiveBoxIcon: (props: any) => {
+    return React.createElement('svg', { 'data-testid': 'archive-box-icon', ...props });
+  },
   BookOpenIcon: (props: any) => {
     return React.createElement('svg', { 'data-testid': 'book-open-icon', ...props });
   },
+  BookmarkSquareIcon: (props: any) => {
+    return React.createElement('svg', { 'data-testid': 'bookmark-square-icon', ...props });
+  },
+  ChartBarIcon: (props: any) => {
+    return React.createElement('svg', { 'data-testid': 'chart-bar-icon', ...props });
+  },
+  CheckIcon: (props: any) => {
+    return React.createElement('svg', { 'data-testid': 'check-icon', ...props });
+  },
   ClockIcon: (props: any) => {
     return React.createElement('svg', { 'data-testid': 'clock-icon', ...props });
+  },
+  SparklesIcon: (props: any) => {
+    return React.createElement('svg', { 'data-testid': 'sparkles-icon', ...props });
   },
   StarIcon: (props: any) => {
     return React.createElement('svg', { 'data-testid': 'star-icon', ...props });

@@ -56,15 +56,16 @@ const BookCover: React.FC<BookCoverProps> = ({
       <div
         className={`
           ${sizeClasses[size]} 
-          bg-gradient-to-br from-blue-500 to-purple-600 
-          rounded-lg shadow-md 
+          bg-gradient-to-br from-ink-800 via-ink-900 to-copper-700
+          rounded-xl shadow-book border border-paper-50/10
           flex flex-col justify-between 
           p-3 text-white 
           ${className}
         `}
       >
         <div className="flex-1 flex flex-col justify-center">
-          <h3 className={`${textSizes[size]} font-bold leading-tight mb-2 text-center`}>
+          <div className="mx-auto mb-3 h-px w-6 bg-copper-300/70" />
+          <h3 className={`${textSizes[size]} font-display font-semibold leading-tight mb-2 text-center`}>
             {displayTitle}
           </h3>
           <p className={`${size === 'sm' ? 'text-xs' : 'text-xs'} opacity-90 text-center`}>
@@ -73,7 +74,7 @@ const BookCover: React.FC<BookCoverProps> = ({
         </div>
         <div className="text-center">
           <div className={`${size === 'sm' ? 'text-xs' : 'text-xs'} opacity-75`}>
-            📚
+            <span className="font-display italic">R</span>
           </div>
         </div>
       </div>
@@ -83,8 +84,8 @@ const BookCover: React.FC<BookCoverProps> = ({
   // If no cover URL or image failed to load, show fallback
   if (!coverImageUrl || imageError) {
     return showFallback ? renderFallbackCover() : (
-      <div className={`${sizeClasses[size]} bg-gray-200 rounded-lg flex items-center justify-center ${className}`}>
-        <span className="text-gray-400 text-sm">No Cover</span>
+      <div className={`${sizeClasses[size]} bg-ink-100 rounded-xl flex items-center justify-center ${className}`}>
+        <span className="text-ink-400 text-sm">No cover</span>
       </div>
     );
   }
@@ -93,8 +94,8 @@ const BookCover: React.FC<BookCoverProps> = ({
     <div className={`relative ${sizeClasses[size]} ${className}`}>
       {/* Loading placeholder */}
       {imageLoading && (
-        <div className={`absolute inset-0 ${sizeClasses[size]} bg-gray-200 rounded-lg flex items-center justify-center animate-pulse`}>
-          <div className="text-gray-400 text-sm">Loading...</div>
+        <div className={`absolute inset-0 ${sizeClasses[size]} bg-ink-100 rounded-xl flex items-center justify-center animate-pulse`}>
+          <div className="text-ink-400 text-xs">Loading</div>
         </div>
       )}
       
@@ -105,8 +106,8 @@ const BookCover: React.FC<BookCoverProps> = ({
         className={`
           ${sizeClasses[size]} 
           object-cover 
-          rounded-lg 
-          shadow-md 
+          rounded-xl
+          shadow-book
           transition-opacity 
           duration-300
           ${imageLoading ? 'opacity-0' : 'opacity-100'}
@@ -117,8 +118,8 @@ const BookCover: React.FC<BookCoverProps> = ({
       />
       
       {/* Hover overlay for better accessibility */}
-      <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-10 transition-all duration-200 rounded-lg flex items-end justify-center opacity-0 hover:opacity-100">
-        <div className="bg-black bg-opacity-75 text-white text-xs p-2 rounded-b-lg w-full text-center">
+      <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-10 transition-all duration-200 rounded-xl flex items-end justify-center opacity-0 hover:opacity-100">
+        <div className="bg-black bg-opacity-75 text-white text-xs p-2 rounded-b-xl w-full text-center">
           {title}
         </div>
       </div>

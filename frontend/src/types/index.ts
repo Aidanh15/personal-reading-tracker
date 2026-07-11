@@ -1,10 +1,12 @@
 // Book types
+export type ReadingStatus = 'not_started' | 'in_progress' | 'completed' | 'did_not_finish';
+
 export interface Book {
   id: number;
   title: string;
   authors: string[];
   position: number;
-  status: 'not_started' | 'in_progress' | 'completed';
+  status: ReadingStatus;
   progressPercentage: number;
   totalPages?: number;
   currentPage?: number;
@@ -28,6 +30,25 @@ export interface Highlight {
   highlightDate: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ReviewHighlight extends Highlight {
+  bookTitle: string;
+  bookAuthors: string[];
+  lastReviewedAt?: string;
+  nextReviewAt?: string;
+  reviewCount: number;
+  favorite: boolean;
+}
+
+export type ReviewAction = 'read' | 'later' | 'favorite' | 'archive';
+
+export interface ReviewSummary {
+  totalHighlights: number;
+  dueCount: number;
+  reviewedToday: number;
+  favoriteCount: number;
+  archivedCount: number;
 }
 
 // Extended highlight type for search results

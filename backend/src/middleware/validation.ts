@@ -9,6 +9,7 @@ export const schemas = {
     title: z.string().min(1, 'Title is required').max(500, 'Title too long'),
     authors: z.array(z.string().min(1, 'Author name cannot be empty')).min(1, 'At least one author is required'),
     position: z.number().int().positive().optional(),
+    status: z.enum(['not_started', 'in_progress', 'completed', 'did_not_finish']).optional(),
     totalPages: z.number().int().positive().optional(),
     coverImageUrl: z.string().url().optional()
   }),
@@ -16,11 +17,16 @@ export const schemas = {
   updateBookProgress: z.object({
     currentPage: z.number().int().min(0).optional(),
     progressPercentage: z.number().int().min(0).max(100).optional(),
-    totalPages: z.number().int().positive().optional()
+    totalPages: z.number().int().positive().optional(),
+    status: z.enum(['not_started', 'in_progress', 'completed', 'did_not_finish']).optional(),
+    startedDate: z.string().datetime().optional(),
+    completedDate: z.string().datetime().optional(),
+    personalRating: z.number().int().min(1).max(5).optional(),
+    personalReview: z.string().max(5000).optional()
   }),
 
   updateBookStatus: z.object({
-    status: z.enum(['not_started', 'in_progress', 'completed']),
+    status: z.enum(['not_started', 'in_progress', 'completed', 'did_not_finish']),
     startedDate: z.string().datetime().optional(),
     completedDate: z.string().datetime().optional()
   }),
@@ -48,7 +54,7 @@ export const schemas = {
   // Search schema
   searchQuery: z.object({
     q: z.string().max(500, 'Search query too long').optional(),
-    status: z.enum(['not_started', 'in_progress', 'completed']).optional(),
+    status: z.enum(['not_started', 'in_progress', 'completed', 'did_not_finish']).optional(),
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format (YYYY-MM-DD)').optional(),
     endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format (YYYY-MM-DD)').optional(),
     sortBy: z.enum(['relevance', 'title', 'date', 'dateAdded', 'progress', 'status', 'position', 'book', 'page']).default('relevance'),
@@ -65,7 +71,7 @@ export const schemas = {
   kindleImportConfirmation: z.object({
     categorizations: z.array(z.object({
       bookIndex: z.number().int().min(0),
-      status: z.enum(['not_started', 'in_progress', 'completed']),
+      status: z.enum(['not_started', 'in_progress', 'completed', 'did_not_finish']),
       position: z.number().int().positive().optional()
     })).min(1, 'At least one book categorization is required')
   })

@@ -114,7 +114,7 @@ function searchBooks(params: {
   }
 
   // Add status filter
-  if (status && ['not_started', 'in_progress', 'completed'].includes(status)) {
+  if (status && ['not_started', 'in_progress', 'completed', 'did_not_finish'].includes(status)) {
     sql += ` AND status = ?`;
     sqlParams.push(status);
   }

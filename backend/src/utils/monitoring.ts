@@ -1,6 +1,7 @@
 import { logger } from './logger';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 
 export interface SystemMetrics {
     timestamp: string;
@@ -63,12 +64,14 @@ export class MonitoringService {
     public async collectMetrics(): Promise<SystemMetrics> {
         const timestamp = new Date().toISOString();
 
-        // Memory metrics
+        // Memory metrics. Heap saturation is normal for V8, so use process RSS
+        // against system memory for health decisions.
         const memUsage = process.memoryUsage();
+        const totalMemoryMb = Math.round(os.totalmem() / 1024 / 1024);
         const memory = {
-            used: Math.round(memUsage.heapUsed / 1024 / 1024), // MB
-            total: Math.round(memUsage.heapTotal / 1024 / 1024), // MB
-            percentage: Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100)
+            used: Math.round(memUsage.rss / 1024 / 1024), // MB
+            total: totalMemoryMb, // MB
+            percentage: Math.round((memUsage.rss / os.totalmem()) * 100)
         };
 
         // CPU metrics (simplified - would need more complex implementation for accurate CPU usage)

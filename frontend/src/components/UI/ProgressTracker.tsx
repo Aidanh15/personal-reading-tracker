@@ -86,6 +86,7 @@ function ProgressTracker({ book, onUpdateProgress, loading = false }: ProgressTr
       case 'not_started': return 'text-gray-600';
       case 'in_progress': return 'text-blue-600';
       case 'completed': return 'text-green-600';
+      case 'did_not_finish': return 'text-rose-700';
       default: return 'text-gray-600';
     }
   };
@@ -95,6 +96,7 @@ function ProgressTracker({ book, onUpdateProgress, loading = false }: ProgressTr
       case 'not_started': return 'Not Started';
       case 'in_progress': return 'In Progress';
       case 'completed': return 'Completed';
+      case 'did_not_finish': return 'Did Not Finish';
       default: return 'Unknown';
     }
   };
@@ -197,6 +199,7 @@ function ProgressTracker({ book, onUpdateProgress, loading = false }: ProgressTr
             <option value="not_started">Not Started</option>
             <option value="in_progress">In Progress</option>
             <option value="completed">Completed</option>
+            <option value="did_not_finish">Did Not Finish</option>
           </select>
         </div>
 
