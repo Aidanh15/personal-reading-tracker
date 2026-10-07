@@ -106,15 +106,12 @@ The application uses SQLite for simplicity and reliability. Database files are s
 
 ## Testing
 
+There is one focused test suite: `backend/src/__tests__/data-safety.test.ts`. It checks that deploys
+(startup seeding, the reading-plan sync, Kindle imports and schema upgrades) never lose or reset
+saved progress, highlights or review state. Run it before deploying changes to any of those:
+
 ```bash
-# Backend tests
-cd backend && npm test
-
-# Frontend tests
-cd frontend && npm test
-
-# E2E tests
-npm run test:e2e
+./scripts/test.sh
 ```
 
 ## Security Considerations

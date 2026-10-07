@@ -600,11 +600,15 @@ export class DatabaseSeeder {
                     continue;
                 }
 
+                // Only force a status onto untouched books; this runs on every startup
+                // and must never override progress the reader has recorded since.
+                const forcedStatus = book.status === 'not_started' ? metadata.status : undefined;
+
                 BookQueries.updateBook(book.id, {
                     title: metadata.title,
                     authors: metadata.authors,
-                    ...(metadata.status ? { status: metadata.status } : {}),
-                    ...(metadata.status === 'completed' ? {
+                    ...(forcedStatus ? { status: forcedStatus } : {}),
+                    ...(forcedStatus === 'completed' ? {
                         progressPercentage: 100,
                         completedDate: book.completedDate ?? now
                     } : {})
@@ -619,7 +623,9 @@ export class DatabaseSeeder {
 
                 if (book) {
                     stats.matched += 1;
-                    const status = planBook.status ?? book.status;
+                    const status = book.status === 'not_started'
+                        ? planBook.status ?? book.status
+                        : book.status;
                     const updateData = {
                         title: planBook.title,
                         authors: planBook.authors,

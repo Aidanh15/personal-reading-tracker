@@ -124,8 +124,6 @@ main() {
     validate "Deploy script exists and is executable" "check_executable 'scripts/deploy-rpi.sh'"
     validate "Health check script exists and is executable" "check_executable 'scripts/health-check.sh'"
     validate "Docker build script exists and is executable" "check_executable 'scripts/docker-build.sh'"
-    validate "Integration test script exists and is executable" "check_executable 'scripts/integration-test.sh'"
-    validate "All tests script exists and is executable" "check_executable 'scripts/run-all-tests.sh'"
     validate "Validation script exists and is executable" "check_executable 'scripts/validate-deployment.sh'"
     validate "Logrotate config exists" "check_file 'scripts/logrotate.conf'"
     
@@ -286,10 +284,9 @@ main() {
         
         echo
         log "${BLUE}🚀 Next Steps:${NC}"
-        echo "  1. Run integration tests: ./scripts/integration-test.sh"
-        echo "  2. Deploy to Raspberry Pi: ./scripts/deploy-rpi.sh"
-        echo "  3. Verify deployment: ./scripts/health-check.sh"
-        echo "  4. Monitor application: check logs and metrics"
+        echo "  1. Deploy to Raspberry Pi: ./scripts/deploy-rpi.sh"
+        echo "  2. Verify deployment: ./scripts/health-check.sh"
+        echo "  3. Monitor application: check logs and metrics"
         
         exit 0
     else

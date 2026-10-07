@@ -8,9 +8,8 @@ Personal reading dashboard: reading plan, progress tracking, Kindle highlights, 
 
 ## Stack
 
-- `backend/`: Express + TypeScript + better-sqlite3. Routes are in `src/routes/` (books, highlights, review, search, covers), SQL in `src/database/queries/`, schema in `src/database/schema.sql`, migrations in `src/database/migrations.ts`. Jest tests.
-- `frontend/`: React 18 + Vite + Tailwind + react-router. Pages are in `src/pages/` (Dashboard, BookDetail, Review, SearchPage). The master reading plan is in `src/data/readingPlan.ts`. Vitest tests.
-- `e2e/`: Playwright.
+- `backend/`: Express + TypeScript + better-sqlite3. Routes are in `src/routes/` (books, highlights, review, search, covers), SQL in `src/database/queries/`, schema in `src/database/schema.sql`, migrations in `src/database/migrations.ts`.
+- `frontend/`: React 18 + Vite + Tailwind + react-router. Pages are in `src/pages/` (Dashboard, BookDetail, Review, SearchPage). The master reading plan is in `src/data/readingPlan.ts`.
 - In production, the backend serves the built frontend from a single container on port 3003 (mapped to host port 3004).
 
 ## Deploying
@@ -25,10 +24,10 @@ On startup, `scripts/docker-entrypoint.sh` seeds the DB only if it is empty, the
 
 ## Gotchas
 
-- **Live data:** `data/reading-tracker.db` is the user's real library (WAL mode). Never delete, reseed or reset it. Avoid `seed:reset*` / `seed:clear` against it.
+- **Live data:** `data/reading-tracker.db` is the user's real library (WAL mode). Never delete, reseed or reset it. Avoid `seed:reset*` / `seed:clear` against it. Startup code must never override a status the reader has changed (forced statuses apply only to `not_started` books).
 - **Dev data:** for local dev, point `DATABASE_PATH` at a copy (e.g. in `tmp/`).
 - **Filesystem:** the SSD is NTFS (fuseblk). Everything is root-owned with 0777 permissions, so git needs `safe.directory` entries (already configured globally). Symlinks and exec bits can be unreliable.
 - **Node versions:** the host has Node 18, but the Docker images use Node 20. Prefer running builds inside Docker if versions matter.
-- **CI:** there is no CI on purpose (single-user personal site). Before deploying, run the relevant tests locally if needed.
+- **Testing:** there is no CI and no UI tests, on purpose (single-user personal site). The only suite is `backend/src/__tests__/data-safety.test.ts`, which guards saved progress, highlights and review state against everything that runs on deploy. Run `./scripts/test.sh` before deploying any change to `seed.ts`, `connection.ts`/`schema.sql`, the Kindle import, or the entrypoint. It runs in Docker with only `backend/` mounted, so it can't touch the live DB. When adding a new startup or import step, extend that test.
 - **Old draft:** local branch `backup/ssd-uncommitted-draft-2026-05` holds a superseded uncommitted draft that was found in this checkout. It is kept for reference only.
 - **Old Codex worktree:** `/home/pi/Documents/Codex/2026-07-10-let-s-taking-a-look-at/reading-tracker-worktree` is a leftover worktree of this repo on the already-merged `feature/final-reading-list-modern-ui` branch.
