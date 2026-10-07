@@ -129,3 +129,9 @@ reading-list.json
 # Backup files
 *.bak
 *.backup
+
+# Local deployment state (SSD checkout)
+.env.ssd
+imports/
+backups/
+data-pre-*/
