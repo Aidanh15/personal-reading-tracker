@@ -15,6 +15,11 @@ CREATE TABLE IF NOT EXISTS books (
     personal_rating INTEGER CHECK (personal_rating >= 1 AND personal_rating <= 5),
     personal_review TEXT,
     cover_image_url TEXT,
+    phase TEXT, -- Reading-list section heading, e.g. "Phase 4 — The American Experiment"
+    milestone TEXT, -- Peak, Breather, Immersive, Capstone or Epilogue
+    category TEXT, -- F, NF, P, Drama or Hybrid
+    parallel_track INTEGER NOT NULL DEFAULT 0, -- Read alongside the main sequence (Proust)
+    unscheduled INTEGER NOT NULL DEFAULT 0, -- Kept in the library but off the Up Next list
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );

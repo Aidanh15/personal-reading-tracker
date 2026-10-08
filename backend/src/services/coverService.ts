@@ -10,6 +10,13 @@ export interface CoverSearchResult {
     localPath?: string;
 }
 
+export interface BookCandidate {
+    title: string;
+    authors: string[];
+    year?: number;
+    coverUrl?: string;
+}
+
 export class CoverService {
     private static readonly COVERS_DIR = process.env['COVERS_PATH'] || join(
         dirname(process.env['DATABASE_PATH'] || join(process.cwd(), 'data', 'reading-tracker.db')),
@@ -47,6 +54,49 @@ export class CoverService {
         } catch (error) {
             console.error(`Failed to search for cover of "${title}":`, error);
             return { title, authors };
+        }
+    }
+
+    /** Candidate books for a free-text search, so the reader can pick the right one. */
+    static async searchCandidates(query: string, limit = 8): Promise<BookCandidate[]> {
+        const params = new URLSearchParams({
+            q: query,
+            limit: String(limit * 2),
+            fields: 'title,author_name,first_publish_year,cover_i'
+        });
+
+        try {
+            const data = JSON.parse(await this.makeHttpRequest(`${this.OPEN_LIBRARY_SEARCH_URL}?${params.toString()}`));
+            const candidates: BookCandidate[] = (data.docs || [])
+                .filter((doc: any) => doc.title && doc.author_name?.length)
+                .map((doc: any) => ({
+                    title: doc.title,
+                    authors: doc.author_name.slice(0, 3),
+                    year: doc.first_publish_year,
+                    coverUrl: doc.cover_i ? `${this.OPEN_LIBRARY_COVER_URL}/${doc.cover_i}-L.jpg` : undefined
+                }))
+                // Prefer results that have a cover; keep relevance order otherwise
+                .sort((a: BookCandidate, b: BookCandidate) => Number(Boolean(b.coverUrl)) - Number(Boolean(a.coverUrl)));
+            if (candidates.length > 0) return candidates.slice(0, limit);
+        } catch (error) {
+            console.log('Open Library candidate search failed:', error);
+        }
+
+        try {
+            const data = JSON.parse(await this.makeHttpRequest(
+                `${this.GOOGLE_BOOKS_API_URL}?q=${encodeURIComponent(query)}&maxResults=${limit}`
+            ));
+            return (data.items || [])
+                .filter((item: any) => item.volumeInfo?.title && item.volumeInfo?.authors?.length)
+                .map((item: any) => ({
+                    title: item.volumeInfo.title,
+                    authors: item.volumeInfo.authors.slice(0, 3),
+                    year: Number.parseInt(item.volumeInfo.publishedDate, 10) || undefined,
+                    coverUrl: item.volumeInfo.imageLinks?.thumbnail?.replace('http:', 'https:')
+                }));
+        } catch (error) {
+            console.log('Google Books candidate search failed:', error);
+            return [];
         }
     }
 

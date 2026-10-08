@@ -1,8 +1,8 @@
 /**
- * Guards the reader's saved data against the code that runs on every deploy:
- * the container entrypoint (seed-user-data, sync-reading-plan), Kindle imports,
- * and the schema upgrade in the DB connection. None of these may lose or
- * change progress, ratings, reviews, highlights or review state.
+ * Guards the reader's saved data against everything that writes to it outside
+ * normal use: the container entrypoint (seed-user-data), Kindle imports, schema
+ * upgrades, the one-time reading-list apply, and Up Next editing. None of these
+ * may lose or change progress, ratings, reviews, highlights or review state.
  */
 import Database from 'better-sqlite3';
 import { mkdtempSync, readFileSync, writeFileSync } from 'fs';
@@ -12,6 +12,8 @@ import { DatabaseSeeder } from '../database/seed';
 import { BookQueries } from '../database/queries/books';
 import { HighlightQueries } from '../database/queries/highlights';
 import { db } from '../database/connection';
+import { applyReadingList } from '../database/applyReadingList';
+import { findBookByTitle } from '../database/library';
 import { Book } from '../types';
 
 const workDir = mkdtempSync(join(tmpdir(), 'reading-tracker-fixtures-'));
@@ -93,24 +95,20 @@ function savedState() {
     };
 }
 
-/** The sync may add missing plan books; everything that existed before must be untouched. */
-function expectPreserved(before: ReturnType<typeof savedState>) {
-    const after = savedState();
-    const beforeIds = new Set(before.books.map((book: any) => book.id));
-    expect(after.books.filter((book: any) => beforeIds.has(book.id))).toEqual(before.books);
-    expect(after.highlights).toEqual(before.highlights);
-    expect(after.reviews).toEqual(before.reviews);
-    expect(after.sessions).toEqual(before.sessions);
-}
-
 /** Same steps as scripts/docker-entrypoint.sh. */
 async function runStartup() {
     await DatabaseSeeder.seedWithUserData(join(workDir, 'missing-kindle.txt'), join(workDir, 'missing-list.txt'));
-    DatabaseSeeder.syncMasterReadingPlan();
 }
 
-function bookStatus(title: string) {
+function bookByTitle(title: string) {
     return BookQueries.getAllBooks().find(book => book.title === title)!;
+}
+
+function addReview(highlightId: number, reviewCount: number, favorite: 0 | 1, lastReviewedAt: string) {
+    db.prepare(`
+        INSERT INTO highlight_reviews (highlight_id, last_reviewed_at, next_review_at, review_count, favorite, archived)
+        VALUES (?, ?, ?, ?, ?, 0)
+    `).run(highlightId, lastReviewedAt, '2026-12-01T08:00:00.000Z', reviewCount, favorite);
 }
 
 beforeEach(() => {
@@ -119,40 +117,15 @@ beforeEach(() => {
     seedLibrary();
 });
 
-describe('deploy startup (seed + reading plan sync)', () => {
+describe('deploy startup', () => {
     it('keeps all saved progress, highlights and review state, across repeated deploys', async () => {
         const before = savedState();
 
         await runStartup();
-        expectPreserved(before);
-        const afterFirstDeploy = savedState();
+        expect(savedState()).toEqual(before);
 
         await runStartup();
-        expect(savedState()).toEqual(afterFirstDeploy);
-    });
-
-    it('does not re-complete a book with a Kindle override once the reader has changed it', async () => {
-        await runStartup();
-
-        expect(bookStatus('War and Peace')).toMatchObject({ status: 'in_progress', progressPercentage: 55 });
-        expect(bookStatus('Slaughterhouse-Five')).toMatchObject({ status: 'did_not_finish', progressPercentage: 30 });
-    });
-
-    it('still marks an untouched Kindle-imported override book as completed', async () => {
-        DatabaseSeeder.clearDatabase();
-        addBook('War And Peace', 'Unknown', 5);
-
-        await runStartup();
-
-        expect(bookStatus('War and Peace')).toMatchObject({ status: 'completed', progressPercentage: 100 });
-    });
-
-    it('keeps unlisted books in the library with their progress', async () => {
-        await runStartup();
-
-        const unlisted = bookStatus('Some Unlisted Novel');
-        expect(unlisted).toMatchObject({ status: 'in_progress', progressPercentage: 10, currentPage: 25 });
-        expect(unlisted.position).toBeGreaterThanOrEqual(1000);
+        expect(savedState()).toEqual(before);
     });
 });
 
@@ -184,6 +157,183 @@ describe('Kindle import into an existing library', () => {
         // Importing the same export again changes nothing
         DatabaseSeeder.importKindleHighlights(kindleFile);
         expect(savedState()).toEqual(after);
+    });
+});
+
+describe('Kindle import title matching', () => {
+    it('never attaches highlights to a different book with a similar title', () => {
+        addBook('Discourses', 'Niccolò Machiavelli', 60);
+        const kindleFile = join(workDir, 'kindle-epictetus.txt');
+        writeFileSync(kindleFile, [
+            'Discourses and Selected Writings, Epictetus',
+            '',
+            'Whatever is rational is tolerable for a creature that thinks.',
+            ''
+        ].join('\n'));
+
+        const stats = DatabaseSeeder.importKindleHighlights(kindleFile);
+
+        expect(stats).toMatchObject({ booksMatched: 0, booksCreated: 1 });
+        expect(HighlightQueries.getHighlightsByBookId(bookByTitle('Discourses').id)).toHaveLength(0);
+        expect(bookByTitle('Discourses and Selected Writings')).toMatchObject({ unscheduled: true });
+    });
+
+    it('matches Kindle titles with subtitles and editions, but not other books sharing words', () => {
+        const books = [
+            addBook('Stoner', 'John Williams', 70),
+            addBook('The Road', 'Cormac McCarthy', 71),
+            addBook('The Road to Los Angeles', 'John Fante', 72)
+        ];
+
+        expect(findBookByTitle('Stoner, A Novel (Vintage Classics)', ['Unknown'], books)?.title).toBe('Stoner');
+        expect(findBookByTitle('The Road', ['Unknown'], books)?.title).toBe('The Road');
+        expect(findBookByTitle('The Road to Wigan Pier', ['George Orwell'], books)).toBeUndefined();
+    });
+});
+
+describe('one-time reading list apply', () => {
+    function seedDuplicates() {
+        const zarathustra = addBook('Thus Spoke Zarathustra', 'Friedrich Nietzsche', 41, { status: 'completed', progressPercentage: 100 });
+        const junk = addBook('In truth', 'I have often laughed at the weaklings', 42, { status: 'completed', progressPercentage: 100 });
+        const quote = 'In truth, I have often laughed at the weaklings who think themselves good.';
+        HighlightQueries.createHighlight(zarathustra.id, { quoteText: quote });
+        const junkCopy = HighlightQueries.createHighlight(junk.id, { quoteText: quote });
+        addReview(junkCopy.id, 3, 1, '2026-10-01T08:00:00.000Z');
+
+        const epictetus = addBook('Discourses and Selected Writings (Penguin Classics)', 'Epictetus', 6, { status: 'completed', progressPercentage: 100 });
+        const machiavelli = addBook('Discourses', 'Niccolò Machiavelli', 144);
+        const stoic = 'Whatever is rational is tolerable for a creature that thinks.';
+        HighlightQueries.createHighlight(epictetus.id, { quoteText: stoic });
+        HighlightQueries.createHighlight(machiavelli.id, { quoteText: stoic });
+
+        addBook('The Gulag Archipelago (Abridged)', 'Aleksandr Solzhenitsyn', 29);
+        addBook('Moby-Dick', 'Herman Melville', 50);
+        addBook('In Search of Lost Time', 'Marcel Proust', 85.5);
+        addBook('Some Book I Dropped', 'Someone Else', 60);
+    }
+
+    function distinctQuotes() {
+        return (db.prepare('SELECT DISTINCT quote_text FROM highlights ORDER BY quote_text').all() as { quote_text: string }[])
+            .map(row => row.quote_text);
+    }
+
+    it('saves nothing in a dry run', async () => {
+        seedDuplicates();
+        const before = db.prepare('SELECT * FROM books ORDER BY id').all();
+        const beforeHighlights = db.prepare('SELECT * FROM highlights ORDER BY id').all();
+
+        const report = await applyReadingList({ dryRun: true, fetchCovers: false });
+
+        expect(report.merged.length).toBeGreaterThan(0);
+        expect(db.prepare('SELECT * FROM books ORDER BY id').all()).toEqual(before);
+        expect(db.prepare('SELECT * FROM highlights ORDER BY id').all()).toEqual(beforeHighlights);
+    });
+
+    it('cleans up duplicates without losing any highlight text, review state or progress', async () => {
+        seedDuplicates();
+        const quotesBefore = distinctQuotes();
+        const before = savedState();
+
+        await applyReadingList({ dryRun: false, fetchCovers: false });
+
+        expect(distinctQuotes()).toEqual(quotesBefore);
+        expect(bookByTitle('In truth')).toBeUndefined();
+        expect(HighlightQueries.getHighlightsByBookId(bookByTitle('Discourses').id)).toHaveLength(0);
+
+        // The junk copy's review history (a favourite) moved to the real copy
+        const kept = HighlightQueries.getHighlightsByBookId(bookByTitle('Thus Spoke Zarathustra').id)[0]!;
+        expect(db.prepare('SELECT review_count, favorite FROM highlight_reviews WHERE highlight_id = ?').get(kept.id))
+            .toEqual({ review_count: 3, favorite: 1 });
+
+        // Every surviving book keeps its progress; only the current book is started
+        const after = savedState();
+        const afterById = new Map(after.books.map((book: any) => [book.id, book]));
+        const gulag = bookByTitle('The Gulag Archipelago (Abridged)');
+        for (const book of before.books as any[]) {
+            const now = afterById.get(book.id) as any;
+            if (!now || book.id === gulag.id) continue;
+            expect(now).toEqual(book);
+        }
+        expect(gulag).toMatchObject({ status: 'in_progress', position: 29 });
+    });
+
+    it('places list books, the parallel track and dropped books', async () => {
+        seedDuplicates();
+
+        const report = await applyReadingList({ dryRun: false, fetchCovers: false });
+
+        expect(bookByTitle('Moby-Dick')).toMatchObject({
+            position: 31, phase: 'Phase 4 — The American Experiment', milestone: 'Peak', category: 'F', unscheduled: false
+        });
+        expect(bookByTitle('Darkness at Noon')).toMatchObject({ position: 30, status: 'not_started' });
+        expect(bookByTitle('In Search of Lost Time')).toMatchObject({ parallelTrack: true, unscheduled: false });
+        expect(bookByTitle('Some Book I Dropped')).toMatchObject({ unscheduled: true, status: 'not_started' });
+        // In-progress and finished books outside the list stay where they were
+        expect(bookByTitle('Dead Souls')).toMatchObject({ status: 'in_progress', position: 19, unscheduled: false });
+        expect(report.listCreated.length + report.listMatched).toBe(140);
+    });
+
+    it('is safe to run twice', async () => {
+        seedDuplicates();
+        // updated_at is bumped by a trigger on any write, even an identical one
+        const books = () => (db.prepare('SELECT * FROM books ORDER BY id').all() as any[])
+            .map(({ updated_at, ...book }) => book);
+        await applyReadingList({ dryRun: false, fetchCovers: false });
+        const afterFirst = books();
+
+        const second = await applyReadingList({ dryRun: false, fetchCovers: false });
+
+        expect(second).toMatchObject({ merged: [], duplicateHighlightsRemoved: [], statusChanges: [], listCreated: [], unscheduled: [] });
+        expect(books()).toEqual(afterFirst);
+    });
+});
+
+describe('Up Next editing', () => {
+    function upNextTitles() {
+        return BookQueries.getUpNextBooks().map(book => book.title);
+    }
+
+    beforeEach(() => {
+        DatabaseSeeder.clearDatabase();
+        addBook('Current Book', 'A', 29, { status: 'in_progress', progressPercentage: 12 });
+        addBook('First', 'A', 30, { phase: 'Phase 3' });
+        addBook('Second', 'A', 31, { phase: 'Phase 3' });
+        addBook('Third', 'A', 32, { phase: 'Phase 4', milestone: 'Peak' });
+    });
+
+    it('reorders from where the list starts, moving a book into the section it is dropped in', () => {
+        const [first, second, third] = BookQueries.getUpNextBooks();
+
+        BookQueries.saveUpNextOrder([
+            { id: third!.id, phase: 'Phase 3' },
+            { id: first!.id, phase: 'Phase 3' },
+            { id: second!.id, phase: 'Phase 3' }
+        ]);
+
+        expect(upNextTitles()).toEqual(['Third', 'First', 'Second']);
+        expect(bookByTitle('Third')).toMatchObject({ position: 30, phase: 'Phase 3', milestone: 'Peak' });
+        expect(bookByTitle('Current Book')).toMatchObject({ position: 29, progressPercentage: 12 });
+    });
+
+    it('rejects an order that leaves out or repeats a book', () => {
+        const [first, second] = BookQueries.getUpNextBooks();
+
+        expect(() => BookQueries.saveUpNextOrder([{ id: first!.id }, { id: second!.id }])).toThrow();
+        expect(() => BookQueries.saveUpNextOrder([{ id: first!.id }, { id: first!.id }, { id: second!.id }])).toThrow();
+        expect(upNextTitles()).toEqual(['First', 'Second', 'Third']);
+    });
+
+    it('moves a book to Unscheduled and back without changing anything else', () => {
+        const second = bookByTitle('Second');
+        HighlightQueries.createHighlight(second.id, { quoteText: 'A highlight that must survive unscheduling.' });
+
+        BookQueries.setUnscheduled(second.id, true);
+        expect(upNextTitles()).toEqual(['First', 'Third']);
+
+        BookQueries.setUnscheduled(second.id, false);
+        expect(upNextTitles()).toEqual(['First', 'Third', 'Second']);
+        expect(bookByTitle('Second')).toMatchObject({ phase: 'Phase 4', status: 'not_started' });
+        expect(HighlightQueries.getHighlightsByBookId(second.id)).toHaveLength(1);
     });
 });
 

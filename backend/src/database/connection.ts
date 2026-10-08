@@ -61,6 +61,7 @@ export class DatabaseConnection {
             const schema = readFileSync(schemaPath, 'utf-8');
             this.db.exec(schema);
             this.ensureDidNotFinishStatus();
+            this.ensureReadingListColumns();
             // Recreate indexes and triggers if the compatibility migration rebuilt books.
             this.db.exec(schema);
             console.log('Database schema initialized successfully');
@@ -126,6 +127,30 @@ export class DatabaseConnection {
             throw error;
         } finally {
             this.db.pragma('foreign_keys = ON');
+        }
+    }
+
+    /**
+     * Additive columns for the editable reading list. ADD COLUMN never touches
+     * existing rows, so this is safe to run on every startup.
+     */
+    private ensureReadingListColumns(): void {
+        const existing = new Set(
+            (this.db.prepare('PRAGMA table_info(books)').all() as { name: string }[]).map(column => column.name)
+        );
+        const columns: Record<string, string> = {
+            phase: 'TEXT',
+            milestone: 'TEXT',
+            category: 'TEXT',
+            parallel_track: 'INTEGER NOT NULL DEFAULT 0',
+            unscheduled: 'INTEGER NOT NULL DEFAULT 0'
+        };
+
+        for (const [name, definition] of Object.entries(columns)) {
+            if (!existing.has(name)) {
+                this.db.exec(`ALTER TABLE books ADD COLUMN ${name} ${definition}`);
+                console.log(`Added books.${name} column`);
+            }
         }
     }
 

@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { basename, extname } from 'path';
 import { CoverService, CoverSearchResult } from '../services/coverService';
 import { readZipTextEntries } from '../utils/zip';
+import { findBookByTitle } from './library';
 
 interface ParsedBook {
     title: string;
@@ -22,13 +23,12 @@ interface KindleImportStats {
     highlightsSkipped: number;
 }
 
+/** Corrects titles/authors of Kindle exports whose filenames lack them. */
 interface ReadingPlanBook {
     position: number;
     title: string;
     authors: string[];
-    status?: 'not_started' | 'in_progress' | 'completed';
     aliases?: string[];
-    parallel?: boolean;
 }
 
 export class DatabaseSeeder {
@@ -37,7 +37,6 @@ export class DatabaseSeeder {
             position: 0,
             title: 'War and Peace',
             authors: ['Leo Tolstoy'],
-            status: 'completed',
             aliases: ['War And Peace']
         },
         {
@@ -55,7 +54,6 @@ export class DatabaseSeeder {
             position: 0,
             title: 'Slaughterhouse-Five',
             authors: ['Kurt Vonnegut'],
-            status: 'completed',
             aliases: [
                 'Slaughterhouse 5, Discover Kurt Vonnegut\'s anti-war masterpiece',
                 'Slaughterhouse 5, Discover Kurt Vonnegut’s anti-war masterpiece'
@@ -66,144 +64,6 @@ export class DatabaseSeeder {
             title: 'Nausea',
             authors: ['Jean-Paul Sartre']
         }
-    ];
-
-    private static readonly REVISED_MASTER_READING_PLAN: ReadingPlanBook[] = [
-        { position: 17, title: 'Fragments', authors: ['Heraclitus'] },
-        { position: 18, title: 'Plato: Five Dialogues', authors: ['Plato'] },
-        { position: 19, title: 'Dead Souls', authors: ['Nikolai Gogol'] },
-        { position: 20, title: 'Demons', authors: ['Fyodor Dostoevsky'], aliases: ['The Possessed'] },
-        { position: 21, title: 'Invisible Cities', authors: ['Italo Calvino'] },
-        { position: 22, title: 'Nicomachean Ethics', authors: ['Aristotle'], aliases: ['Aristotle\'s Nicomachean Ethics'] },
-        { position: 23, title: 'On Human Nature; Studies in Pessimism', authors: ['Arthur Schopenhauer'], aliases: ['On Human Nature, Studies in Pessimism, etc.'] },
-        { position: 24, title: 'Human, All Too Human', authors: ['Friedrich Nietzsche'] },
-        { position: 25, title: 'The Cossacks and Other Stories', authors: ['Leo Tolstoy'] },
-        { position: 26, title: 'Anna Karenina', authors: ['Leo Tolstoy'] },
-        { position: 27, title: 'The Kingdom of God Is Within You', authors: ['Leo Tolstoy'] },
-        { position: 28, title: 'The Forbidden Garden of Leningrad', authors: ['Simon Parkin'] },
-        { position: 29, title: 'The Gulag Archipelago (Abridged)', authors: ['Aleksandr Solzhenitsyn'], aliases: ['The Gulag Archipelago: The Authorized Abridgement'] },
-        { position: 30, title: 'Moby-Dick', authors: ['Herman Melville'], aliases: ['Moby Dick'] },
-        { position: 31, title: 'Lonesome Dove', authors: ['Larry McMurtry'] },
-        { position: 32, title: 'Absalom, Absalom!', authors: ['William Faulkner'] },
-        { position: 33, title: 'The Sound and the Fury', authors: ['William Faulkner'] },
-        { position: 34, title: 'The Grapes of Wrath', authors: ['John Steinbeck'] },
-        { position: 35, title: 'Hillbilly Elegy', authors: ['J. D. Vance'] },
-        { position: 36, title: 'Ironweed', authors: ['William Kennedy'] },
-        { position: 37, title: 'The End of Vandalism', authors: ['Tom Drury'] },
-        { position: 38, title: 'On the Road', authors: ['Jack Kerouac'] },
-        { position: 39, title: 'Catch-22', authors: ['Joseph Heller'] },
-        { position: 40, title: 'A Clockwork Orange', authors: ['Anthony Burgess'] },
-        { position: 41, title: 'Pnin', authors: ['Vladimir Nabokov'] },
-        { position: 42, title: 'Desolation Angels', authors: ['Jack Kerouac'] },
-        { position: 43, title: 'Running Dog', authors: ['Don DeLillo'] },
-        { position: 44, title: 'White Noise', authors: ['Don DeLillo'] },
-        { position: 45, title: 'Libra', authors: ['Don DeLillo'] },
-        { position: 46, title: 'Infinite Jest', authors: ['David Foster Wallace'] },
-        { position: 47, title: 'North Woods', authors: ['Daniel Mason'] },
-        { position: 48, title: 'Suttree', authors: ['Cormac McCarthy'] },
-        { position: 49, title: 'Blood Meridian', authors: ['Cormac McCarthy'] },
-        { position: 50, title: 'The Road', authors: ['Cormac McCarthy'] },
-        { position: 51, title: 'The Iliad', authors: ['Homer'], aliases: ['The Iliad of Homer'] },
-        { position: 52, title: 'Metamorphoses', authors: ['Ovid'], aliases: ['The Metamorphoses'] },
-        { position: 53, title: 'Glorious Exploits', authors: ['Ferdia Lennon'] },
-        { position: 54, title: 'The Origin of Consciousness in the Breakdown of the Bicameral Mind', authors: ['Julian Jaynes'] },
-        { position: 55, title: 'The Art of Rhetoric', authors: ['Aristotle'] },
-        { position: 56, title: 'The Art of War', authors: ['Sun Tzu'] },
-        { position: 57, title: 'The Moon Is Down', authors: ['John Steinbeck'] },
-        { position: 58, title: 'Discourses, Fragments, Handbook', authors: ['Epictetus'] },
-        { position: 59, title: 'The Courage to Be Disliked', authors: ['Ichiro Kishimi', 'Fumitake Koga'] },
-        { position: 60, title: 'A Distant Mirror', authors: ['Barbara W. Tuchman'] },
-        { position: 61, title: 'In Praise of Folly', authors: ['Erasmus'] },
-        { position: 62, title: 'Don Quixote', authors: ['Miguel de Cervantes'], aliases: ['Don Quixote - Miguel De Cervantes Saavedra'] },
-        { position: 63, title: 'Leviathan', authors: ['Thomas Hobbes'] },
-        { position: 64, title: 'The Pickwick Papers', authors: ['Charles Dickens'] },
-        { position: 65, title: 'Bleak House', authors: ['Charles Dickens'] },
-        { position: 66, title: 'Middlemarch', authors: ['George Eliot'] },
-        { position: 67, title: 'Lélia', authors: ['George Sand'], aliases: ['Lelia'] },
-        { position: 68, title: 'Pygmalion', authors: ['George Bernard Shaw'] },
-        { position: 69, title: 'Les Misérables', authors: ['Victor Hugo'], aliases: ['Les Miserables'] },
-        { position: 70, title: 'The Magic Mountain', authors: ['Thomas Mann'] },
-        { position: 71, title: 'Advent', authors: ['Gunnar Gunnarsson'] },
-        { position: 72, title: 'Metamorphosis and Other Stories', authors: ['Franz Kafka'] },
-        { position: 73, title: 'Mrs Dalloway', authors: ['Virginia Woolf'] },
-        { position: 74, title: 'Ulysses', authors: ['James Joyce'] },
-        { position: 75, title: 'The Poetics of Space', authors: ['Gaston Bachelard'] },
-        { position: 76, title: 'The Waste Land', authors: ['T. S. Eliot'] },
-        { position: 77, title: 'Molloy', authors: ['Samuel Beckett'] },
-        { position: 78, title: 'Waiting for Godot', authors: ['Samuel Beckett'] },
-        { position: 79, title: 'How It Is', authors: ['Samuel Beckett'] },
-        { position: 80, title: 'Piranesi', authors: ['Susanna Clarke'] },
-        { position: 81, title: 'The Remains of the Day', authors: ['Kazuo Ishiguro'] },
-        { position: 82, title: 'The First Man', authors: ['Albert Camus'] },
-        { position: 83, title: 'My Brilliant Friend', authors: ['Elena Ferrante'] },
-        { position: 84, title: 'Austerlitz', authors: ['W. G. Sebald'] },
-        { position: 85, title: 'The Last Samurai', authors: ['Helen DeWitt'] },
-        { position: 85.5, title: 'In Search of Lost Time', authors: ['Marcel Proust'], parallel: true, aliases: ['Swann\'s Way'] },
-        { position: 86, title: 'The Recognitions', authors: ['William Gaddis'] },
-        { position: 87, title: 'The Selfish Gene', authors: ['Richard Dawkins'] },
-        { position: 88, title: 'The Crying of Lot 49', authors: ['Thomas Pynchon'] },
-        { position: 89, title: 'Gravity\'s Rainbow', authors: ['Thomas Pynchon'] },
-        { position: 90, title: 'Bleeding Edge', authors: ['Thomas Pynchon'] },
-        { position: 91, title: 'Shadow Ticket', authors: ['Thomas Pynchon'] },
-        { position: 92, title: 'The God Delusion', authors: ['Richard Dawkins'] },
-        { position: 93, title: 'Pale Fire', authors: ['Vladimir Nabokov'] },
-        { position: 94, title: 'Lolita', authors: ['Vladimir Nabokov'] },
-        { position: 95, title: 'Strange Pilgrims', authors: ['Gabriel García Márquez'], aliases: ['Strange Pilgrims - Gabriel Garcia Marquez'] },
-        { position: 96, title: 'Midnight\'s Children', authors: ['Salman Rushdie'] },
-        { position: 97, title: 'When We Cease to Understand the World', authors: ['Benjamín Labatut'] },
-        { position: 98, title: '2666', authors: ['Roberto Bolaño'] },
-        { position: 99, title: 'Foucault\'s Pendulum', authors: ['Umberto Eco'] },
-        { position: 100, title: 'Capital, Volume I', authors: ['Karl Marx'], aliases: ['Capital Volume I'] },
-        { position: 101, title: 'Technofeudalism', authors: ['Yanis Varoufakis'], aliases: ['Technofeudalism: What Killed Capitalism'] },
-        { position: 102, title: 'Abundance', authors: ['Ezra Klein', 'Derek Thompson'] },
-        { position: 103, title: 'All the Devils Are Here', authors: ['Bethany McLean', 'Joe Nocera'] },
-        { position: 104, title: 'Dopesick', authors: ['Beth Macy'], aliases: ['Dopesick: Dealers, Doctors and the Drug Company that Addicted America'] },
-        { position: 105, title: 'No More Tears', authors: ['Gardiner Harris'], aliases: ['No More Tears: The Dark Secrets of Johnson & Johnson'] },
-        { position: 106, title: 'The Age of Diagnosis', authors: ['Suzanne O\'Sullivan'] },
-        { position: 107, title: 'Destroyer of Worlds', authors: ['Frank Close'] },
-        { position: 108, title: 'American Prometheus', authors: ['Kai Bird', 'Martin J. Sherwin'] },
-        { position: 109, title: 'The Infinity Machine', authors: ['Sebastian Mallaby'] },
-        { position: 110, title: 'More Everything Forever', authors: ['Adam Becker'] },
-        { position: 111, title: 'Enshittification', authors: ['Cory Doctorow'] },
-        { position: 112, title: 'Against the Machine', authors: ['Paul Kingsnorth'] },
-        { position: 113, title: 'The Abolition of Man', authors: ['C. S. Lewis'] },
-        { position: 114, title: 'Right/Wrong', authors: ['Juan Enriquez'], aliases: ['Right/Wrong: How Technology Transforms Our Ethics'] },
-        { position: 115, title: 'More Than a Shirt', authors: ['Joey D\'Urso'] },
-        { position: 116, title: 'The Racket', authors: ['Conor Niland'] },
-        { position: 117, title: 'In the Freud Archives', authors: ['Janet Malcolm'] },
-        { position: 118, title: 'Deleuze and Guattari\'s Anti-Oedipus: Introduction to Schizoanalysis', authors: ['Eugene W. Holland'] },
-        { position: 119, title: 'Knowledge in a Nutshell: Carl Jung', authors: ['Gary Bobroff'] },
-        { position: 120, title: 'Archetypes and the Collective Unconscious', authors: ['C. G. Jung'] },
-        { position: 121, title: 'The Undiscovered Self', authors: ['C. G. Jung'] },
-        { position: 122, title: 'The Looming Tower', authors: ['Lawrence Wright'], aliases: ['The Looming Tower: Al-Qaeda and the Road to 9/11'] },
-        { position: 123, title: 'To Hell or Barbados', authors: ['Sean O\'Callaghan'] },
-        { position: 124, title: 'The Famine Plot', authors: ['Tim Pat Coogan'], aliases: ['The Famine Plot: England\'s Role in Ireland\'s Greatest Tragedy'] },
-        { position: 125, title: 'De Valera: Long Fellow, Long Shadow', authors: ['Tim Pat Coogan'] },
-        { position: 126, title: 'The Twelve Apostles', authors: ['Tim Pat Coogan'] },
-        { position: 127, title: 'Borstal Boy', authors: ['Brendan Behan'] },
-        { position: 128, title: 'Kincora', authors: ['Chris Moore'] },
-        { position: 129, title: 'Running From Office', authors: ['Eoghan Murphy'] },
-        { position: 130, title: 'Ungovernable', authors: ['Simon Hart'] },
-        { position: 131, title: 'For and Against a United Ireland', authors: ['Fintan O\'Toole', 'Sam McBride'] },
-        { position: 132, title: 'Falling Animals', authors: ['Sheila Armstrong'] },
-        { position: 133, title: 'Prophet Song', authors: ['Paul Lynch'] },
-        { position: 134, title: 'A Preface to Paradise Lost', authors: ['C. S. Lewis'] },
-        { position: 135, title: 'Paradise Lost & Paradise Regained', authors: ['John Milton'] },
-        { position: 136, title: 'The Lord of the Rings', authors: ['J. R. R. Tolkien'] },
-        { position: 137, title: 'Wait Until Spring, Bandini', authors: ['John Fante'] },
-        { position: 138, title: 'The Road to Los Angeles', authors: ['John Fante'] },
-        { position: 139, title: 'Of Human Bondage', authors: ['W. Somerset Maugham'] },
-        { position: 140, title: 'Ask the Dust', authors: ['John Fante'] },
-        { position: 141, title: 'American Psycho', authors: ['Bret Easton Ellis'] },
-        { position: 142, title: 'Dreams from Bunker Hill', authors: ['John Fante'] },
-        { position: 143, title: 'The Return of the Native', authors: ['Thomas Hardy'] },
-        { position: 144, title: 'Discourses', authors: ['Niccolò Machiavelli'], aliases: ['Discourses - Niccolo Machiavelli'] },
-        { position: 145, title: 'The Divine Within: Selected Writings on Enlightenment', authors: ['Aldous Huxley'] },
-        { position: 146, title: 'Love and Living', authors: ['Thomas Merton'] },
-        { position: 147, title: 'How to Live: A Life of Montaigne', authors: ['Sarah Bakewell'] },
-        { position: 148, title: 'Essays', authors: ['Michel de Montaigne'] },
-        { position: 149, title: 'Man\'s Search for Meaning', authors: ['Viktor Frankl'] },
-        { position: 150, title: 'Rapture', authors: ['John Shirley'], aliases: ['Rapture (BioShock)'] }
     ];
 
     // Reading list from the provided data - extracted from KindleHighlights.txt
@@ -444,15 +304,18 @@ export class DatabaseSeeder {
 
         const importTransaction = db.transaction(() => {
             for (const parsedBook of parsedBooks) {
-                let book = this.findMatchingBook(parsedBook.title, existingBooks);
+                let book = findBookByTitle(parsedBook.title, parsedBook.authors, existingBooks);
 
                 if (book) {
                     stats.booksMatched += 1;
                 } else {
+                    // Unrecognised titles land on the Unscheduled shelf rather than
+                    // being guessed onto a similar-sounding book
                     book = BookQueries.createBook({
                         title: parsedBook.title,
                         authors: parsedBook.authors,
-                        position: existingBooks.length + stats.booksCreated + 1
+                        position: 1000 + existingBooks.length + stats.booksCreated,
+                        unscheduled: true
                     });
                     existingBooks.push(book);
                     stats.booksCreated += 1;
@@ -543,22 +406,6 @@ export class DatabaseSeeder {
             .trim();
     }
 
-    private static findMatchingBook(title: string, books: ReturnType<typeof BookQueries.getAllBooks>[number][]) {
-        const normalizedTitle = this.normalizeTitle(title);
-        const titleTokens = this.titleTokens(title);
-
-        return books.find(book => {
-            const normalizedBookTitle = this.normalizeTitle(book.title);
-            if (normalizedTitle.includes(normalizedBookTitle) || normalizedBookTitle.includes(normalizedTitle)) {
-                return true;
-            }
-
-            const bookTokens = this.titleTokens(book.title);
-            const sharedTokens = titleTokens.filter(token => bookTokens.includes(token));
-            return sharedTokens.length >= Math.min(2, titleTokens.length, bookTokens.length);
-        });
-    }
-
     private static findMetadataOverride(title: string): ReadingPlanBook | undefined {
         return this.KINDLE_METADATA_OVERRIDES.find(entry =>
             this.matchesPlanTitle(title, entry)
@@ -572,172 +419,6 @@ export class DatabaseSeeder {
         return possibleTitles.some(possibleTitle => this.normalizeTitle(possibleTitle) === normalizedTitle);
     }
 
-    static syncMasterReadingPlan(): {
-        planned: number;
-        matched: number;
-        created: number;
-        metadataUpdated: number;
-        movedUnlisted: number;
-    } {
-        const stats = {
-            planned: this.REVISED_MASTER_READING_PLAN.length,
-            matched: 0,
-            created: 0,
-            metadataUpdated: 0,
-            movedUnlisted: 0
-        };
-
-        const now = new Date().toISOString();
-        const plannedBookIds = new Set<number>();
-
-        const transaction = db.transaction(() => {
-            this.decodeExistingBookMetadata();
-
-            let books = BookQueries.getAllBooks();
-            for (const metadata of this.KINDLE_METADATA_OVERRIDES) {
-                const book = this.findBookForPlanEntry(metadata, books);
-                if (!book) {
-                    continue;
-                }
-
-                // Only force a status onto untouched books; this runs on every startup
-                // and must never override progress the reader has recorded since.
-                const forcedStatus = book.status === 'not_started' ? metadata.status : undefined;
-
-                BookQueries.updateBook(book.id, {
-                    title: metadata.title,
-                    authors: metadata.authors,
-                    ...(forcedStatus ? { status: forcedStatus } : {}),
-                    ...(forcedStatus === 'completed' ? {
-                        progressPercentage: 100,
-                        completedDate: book.completedDate ?? now
-                    } : {})
-                });
-                stats.metadataUpdated += 1;
-            }
-
-            books = BookQueries.getAllBooks();
-
-            for (const planBook of this.REVISED_MASTER_READING_PLAN) {
-                let book = this.findBookForPlanEntry(planBook, books);
-
-                if (book) {
-                    stats.matched += 1;
-                    const status = book.status === 'not_started'
-                        ? planBook.status ?? book.status
-                        : book.status;
-                    const updateData = {
-                        title: planBook.title,
-                        authors: planBook.authors,
-                        position: planBook.position,
-                        status,
-                        progressPercentage: status === 'completed'
-                            ? 100
-                            : status === 'not_started'
-                                ? 0
-                                : book.progressPercentage,
-                        currentPage: status === 'not_started' ? 0 : book.currentPage,
-                        ...(status === 'completed' ? { completedDate: book.completedDate ?? now } : {}),
-                        ...(status === 'in_progress' ? { startedDate: book.startedDate ?? now } : {})
-                    };
-
-                    BookQueries.updateBook(book.id, updateData);
-                    plannedBookIds.add(book.id);
-                } else {
-                    const status = planBook.status ?? 'not_started';
-                    book = BookQueries.createBook({
-                        title: planBook.title,
-                        authors: planBook.authors,
-                        position: planBook.position,
-                        status
-                    });
-
-                    if (status === 'completed' || status === 'in_progress') {
-                        BookQueries.updateBook(book.id, {
-                            progressPercentage: status === 'completed' ? 100 : 0,
-                            ...(status === 'completed' ? { completedDate: now } : {}),
-                            ...(status === 'in_progress' ? { startedDate: now } : {})
-                        });
-                    }
-
-                    plannedBookIds.add(book.id);
-                    books.push(book);
-                    stats.created += 1;
-                }
-            }
-
-            const refreshedBooks = BookQueries.getAllBooks();
-            let overflowPosition = 1000;
-
-            for (const book of refreshedBooks) {
-                if (plannedBookIds.has(book.id) || book.status === 'completed' || book.position <= 16) {
-                    continue;
-                }
-
-                BookQueries.updateBook(book.id, {
-                    position: overflowPosition++,
-                    status: book.status
-                });
-                stats.movedUnlisted += 1;
-            }
-        });
-
-        transaction();
-
-        console.log(`Synced ${stats.planned} planned books`);
-        console.log(`Matched ${stats.matched}, created ${stats.created}`);
-        console.log(`Updated metadata for ${stats.metadataUpdated} Kindle-created books`);
-        console.log(`Moved ${stats.movedUnlisted} unlisted active books to the end`);
-
-        return stats;
-    }
-
-    private static decodeExistingBookMetadata(): void {
-        const books = BookQueries.getAllBooks();
-
-        for (const book of books) {
-            const decodedTitle = this.decodeHtmlEntities(book.title);
-            const decodedAuthors = book.authors.map(author => this.decodeHtmlEntities(author));
-
-            if (
-                decodedTitle !== book.title ||
-                JSON.stringify(decodedAuthors) !== JSON.stringify(book.authors)
-            ) {
-                BookQueries.updateBook(book.id, {
-                    title: decodedTitle,
-                    authors: decodedAuthors
-                });
-            }
-        }
-    }
-
-    private static findBookForPlanEntry(
-        entry: ReadingPlanBook,
-        books: ReturnType<typeof BookQueries.getAllBooks>[number][]
-    ) {
-        return books.find(book => {
-            if (!this.matchesPlanTitle(book.title, entry)) {
-                return false;
-            }
-
-            return this.authorsOverlap(book.authors, entry.authors) ||
-                entry.aliases !== undefined ||
-                book.authors.some(author => this.normalizeTitle(author) === 'unknown') ||
-                entry.position === 0;
-        });
-    }
-
-    private static authorsOverlap(bookAuthors: string[], planAuthors: string[]): boolean {
-        return bookAuthors.some(bookAuthor =>
-            planAuthors.some(planAuthor => {
-                const normalizedBookAuthor = this.normalizeTitle(bookAuthor);
-                const normalizedPlanAuthor = this.normalizeTitle(planAuthor);
-                return normalizedBookAuthor.includes(normalizedPlanAuthor) ||
-                    normalizedPlanAuthor.includes(normalizedBookAuthor);
-            })
-        );
-    }
-
     private static normalizeTitle(title: string): string {
         return title
             .toLowerCase()
@@ -745,17 +426,6 @@ export class DatabaseSeeder {
             .replace(/[^a-z0-9]+/g, ' ')
             .replace(/\s+/g, ' ')
             .trim();
-    }
-
-    private static titleTokens(title: string): string[] {
-        const stopwords = new Set([
-            'a', 'an', 'and', 'by', 'complete', 'edition', 'for', 'in', 'of', 'on', 'penguin',
-            'the', 'to', 'unabridged', 'with'
-        ]);
-
-        return this.normalizeTitle(title)
-            .split(' ')
-            .filter(token => token.length > 2 && !stopwords.has(token));
     }
 
     private static decodeHtmlEntities(value: string): string {

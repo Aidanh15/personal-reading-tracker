@@ -2,6 +2,7 @@
 
 import { DatabaseSeeder } from '../database/seed';
 import { join } from 'path';
+import { applyReadingList, printReadingListReport } from '../database/applyReadingList';
 
 // CLI script for database seeding operations
 async function main() {
@@ -88,10 +89,13 @@ async function main() {
                 DatabaseSeeder.importKindleHighlights(importFile);
                 break;
 
-            case 'sync-reading-plan':
-                console.log('🧭 Syncing revised master reading plan...');
-                DatabaseSeeder.syncMasterReadingPlan();
+            case 'apply-reading-list': {
+                const dryRun = args.includes('--dry-run');
+                console.log(`🧭 Applying the October 2026 reading list${dryRun ? ' (dry run)' : ''}...`);
+                const report = await applyReadingList({ dryRun });
+                printReadingListReport(report, dryRun);
                 break;
+            }
 
             default:
                 console.log(`
@@ -111,7 +115,7 @@ Commands:
   add-progress                 Add sample progress data to existing books
   parse-kindle [file]          Parse and display Kindle highlights (dry run)
   import-kindle [file]         Import Kindle highlights into existing database with dedupe
-  sync-reading-plan            Apply revised reading order, statuses, and metadata fixes
+  apply-reading-list [--dry-run] One-time: apply the Oct 2026 list and clean up duplicates
 
 Examples:
   tsx seed.ts seed-user-data

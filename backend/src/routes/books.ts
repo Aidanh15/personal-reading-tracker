@@ -1,7 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { BookQueries } from '../database/queries/books';
 import { HighlightQueries } from '../database/queries/highlights';
-import { validateBody, validateParams, schemas } from '../middleware/validation';
+import { validateBody, validateParams, validateQuery, schemas } from '../middleware/validation';
+import { CoverService } from '../services/coverService';
 import { createError } from '../middleware/errorHandler';
 import { z } from 'zod';
 
@@ -11,6 +12,63 @@ const router = Router();
 const bookIdSchema = z.object({
   id: z.string().regex(/^\d+$/, 'Book ID must be a number').transform(Number)
 });
+
+// GET /api/books/lookup?q= - Candidate books (with covers) for adding to the list
+router.get('/lookup',
+  validateQuery(schemas.bookLookup),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const candidates = await CoverService.searchCandidates(String(req.query['q']));
+      res.json({ candidates });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /api/books/up-next - Add a book to the end of Up Next, fetching its cover
+router.post('/up-next',
+  validateBody(schemas.addToUpNext),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { title, authors, coverUrl, category, milestone } = req.body;
+      const cover = coverUrl
+        ? await CoverService.downloadCover({ title, authors, coverUrl })
+        : await CoverService.getCoverForBook(title, authors);
+
+      const tail = BookQueries.getUpNextTail();
+      const book = BookQueries.createBook({
+        title,
+        authors,
+        position: tail.position,
+        ...(tail.phase ? { phase: tail.phase } : {}),
+        ...(category ? { category } : {}),
+        ...(milestone ? { milestone } : {}),
+        ...(cover.localPath ? { coverImageUrl: cover.localPath } : {})
+      });
+      res.status(201).json({ book });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// PUT /api/books/up-next - Save the Up Next order (and each book's phase)
+router.put('/up-next',
+  validateBody(schemas.saveUpNextOrder),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      try {
+        BookQueries.saveUpNextOrder(req.body.order);
+      } catch (error) {
+        throw createError(error instanceof Error ? error.message : 'Invalid order', 409, 'UP_NEXT_CHANGED');
+      }
+      res.json({ books: BookQueries.getAllBooks() });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 // GET /api/books - Get all books
 router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
@@ -175,13 +233,44 @@ router.post('/:id/highlights',
   }
 );
 
-// DELETE /api/books/:id - Delete book
+// PUT /api/books/:id/schedule - Move a not-started book off Up Next or back onto it
+router.put('/:id/schedule',
+  validateParams(bookIdSchema),
+  validateBody(schemas.setUnscheduled),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const bookId = req.params['id'] as unknown as number;
+      const book = BookQueries.getBookById(bookId);
+      if (!book) {
+        throw createError('Book not found', 404, 'BOOK_NOT_FOUND');
+      }
+      if (book.status !== 'not_started' || book.parallelTrack) {
+        throw createError('Only not-started books on the list can be unscheduled', 409, 'NOT_SCHEDULABLE');
+      }
+
+      res.json({ book: BookQueries.setUnscheduled(bookId, req.body.unscheduled) });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// DELETE /api/books/:id - Delete book (refused while it has highlights, which would be lost)
 router.delete('/:id',
   validateParams(bookIdSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const bookId = req.params['id'] as unknown as number;
-      
+
+      const highlightCount = BookQueries.countHighlights(bookId);
+      if (highlightCount > 0) {
+        throw createError(
+          `This book has ${highlightCount} highlight${highlightCount === 1 ? '' : 's'}; move it to Unscheduled instead`,
+          409,
+          'BOOK_HAS_HIGHLIGHTS'
+        );
+      }
+
       const deleted = BookQueries.deleteBook(bookId);
       if (!deleted) {
         throw createError('Book not found', 404, 'BOOK_NOT_FOUND');

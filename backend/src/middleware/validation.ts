@@ -31,6 +31,29 @@ export const schemas = {
     completedDate: z.string().datetime().optional()
   }),
 
+  addToUpNext: z.object({
+    title: z.string().trim().min(1, 'Title is required').max(500, 'Title too long'),
+    authors: z.array(z.string().trim().min(1)).min(1, 'At least one author is required').max(10),
+    coverUrl: z.string().url().startsWith('https://').optional(),
+    category: z.enum(['F', 'NF', 'P', 'Drama', 'Hybrid']).optional(),
+    milestone: z.enum(['Peak', 'Breather', 'Immersive', 'Capstone', 'Epilogue']).optional()
+  }),
+
+  saveUpNextOrder: z.object({
+    order: z.array(z.object({
+      id: z.number().int().positive(),
+      phase: z.string().max(200).nullable().optional()
+    })).min(1)
+  }),
+
+  setUnscheduled: z.object({
+    unscheduled: z.boolean()
+  }),
+
+  bookLookup: z.object({
+    q: z.string().trim().min(2, 'Search for at least 2 characters').max(200)
+  }),
+
   reorderBooks: z.object({
     bookIds: z.array(z.number().int().positive()).min(1, 'At least one book ID is required')
   }),

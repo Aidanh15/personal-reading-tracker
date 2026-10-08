@@ -37,4 +37,10 @@ On startup, `scripts/docker-entrypoint.sh` seeds the DB only if it is empty, the
 
 Changes committed but not yet live (clear this list after each `scripts/redeploy.sh`):
 
-- (none)
+- Reading-list editing backend: new `books` columns (phase, milestone, category, parallel_track, unscheduled); Up Next API (`GET /books/lookup`, `POST`/`PUT /books/up-next`, `PUT /books/:id/schedule`); delete refused while a book has highlights.
+- Startup reading-plan sync retired (the DB is now the source of truth). The Kindle importer uses strict title matching; unknown titles go to Unscheduled.
+- **After deploying, run once:** `docker exec reading-tracker-ui-test sh -c 'cd backend && node dist/scripts/seed.js apply-reading-list --dry-run'`, review the report, then run it without `--dry-run`. This applies `list.txt` (Oct 2026) and cleans up duplicate books and misattributed highlights.
+
+## Backlog (ideas, not started)
+
+- **Discuss with Claude (per book):** a button on each book that opens a guided discussion with Claude about it. The questions should be specific and well researched, grounded in the book itself. At the end, Claude writes a review *from the user's perspective*, based on their answers, which is saved on the book to look back on. Open questions: Claude API key and cost, using web search/research for less-known books, where to store transcripts, and whether the review becomes `personal_review` or a separate history.

@@ -1,11 +1,7 @@
 import { db } from '../connection';
 import { Book, CreateBookRequest, UpdateBookProgressRequest, UpdateBookStatusRequest } from '../../types';
 
-export class BookQueries {
-  // Get all books ordered by status and position
-  static getAllBooks(): Book[] {
-    const query = `
-      SELECT 
+const BOOK_COLUMNS = `
         id,
         title,
         authors,
@@ -19,8 +15,28 @@ export class BookQueries {
         personal_rating as personalRating,
         personal_review as personalReview,
         cover_image_url as coverImageUrl,
+        phase,
+        milestone,
+        category,
+        parallel_track as parallelTrack,
+        unscheduled,
         created_at as createdAt,
-        updated_at as updatedAt
+        updated_at as updatedAt`;
+
+export function mapBookRow(row: any): Book {
+  return {
+    ...row,
+    authors: JSON.parse(row.authors),
+    parallelTrack: Boolean(row.parallelTrack),
+    unscheduled: Boolean(row.unscheduled)
+  };
+}
+
+export class BookQueries {
+  // Get all books ordered by status and position
+  static getAllBooks(): Book[] {
+    const query = `
+      SELECT ${BOOK_COLUMNS}
       FROM books 
       ORDER BY 
         CASE status 
@@ -34,31 +50,13 @@ export class BookQueries {
     `;
     
     const rows = db.prepare(query).all() as any[];
-    return rows.map(row => ({
-      ...row,
-      authors: JSON.parse(row.authors)
-    }));
+    return rows.map(mapBookRow);
   }
 
   // Get book by ID
   static getBookById(id: number): Book | null {
     const query = `
-      SELECT 
-        id,
-        title,
-        authors,
-        position,
-        status,
-        progress_percentage as progressPercentage,
-        total_pages as totalPages,
-        current_page as currentPage,
-        started_date as startedDate,
-        completed_date as completedDate,
-        personal_rating as personalRating,
-        personal_review as personalReview,
-        cover_image_url as coverImageUrl,
-        created_at as createdAt,
-        updated_at as updatedAt
+      SELECT ${BOOK_COLUMNS}
       FROM books 
       WHERE id = ?
     `;
@@ -66,17 +64,14 @@ export class BookQueries {
     const row = db.prepare(query).get(id) as any;
     if (!row) return null;
     
-    return {
-      ...row,
-      authors: JSON.parse(row.authors)
-    };
+    return mapBookRow(row);
   }
 
   // Create new book
   static createBook(bookData: CreateBookRequest): Book {
     const query = `
-      INSERT INTO books (title, authors, position, status, total_pages, cover_image_url)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO books (title, authors, position, status, total_pages, cover_image_url, phase, milestone, category, unscheduled)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
     const position = bookData.position ?? this.getNextPosition();
@@ -86,7 +81,11 @@ export class BookQueries {
       position,
       bookData.status ?? 'not_started',
       bookData.totalPages,
-      bookData.coverImageUrl
+      bookData.coverImageUrl,
+      bookData.phase ?? null,
+      bookData.milestone ?? null,
+      bookData.category ?? null,
+      bookData.unscheduled ? 1 : 0
     );
     
     const newBook = this.getBookById(result.lastInsertRowid as number);
@@ -289,6 +288,23 @@ export class BookQueries {
       updates.push('cover_image_url = ?');
       values.push(updateData.coverImageUrl);
     }
+
+    for (const [field, column] of [['phase', 'phase'], ['milestone', 'milestone'], ['category', 'category']] as const) {
+      if (updateData[field] !== undefined) {
+        updates.push(`${column} = ?`);
+        values.push(updateData[field]);
+      }
+    }
+
+    if (updateData.parallelTrack !== undefined) {
+      updates.push('parallel_track = ?');
+      values.push(updateData.parallelTrack ? 1 : 0);
+    }
+
+    if (updateData.unscheduled !== undefined) {
+      updates.push('unscheduled = ?');
+      values.push(updateData.unscheduled ? 1 : 0);
+    }
     
     if (updates.length === 0) {
       return this.getBookById(id);
@@ -315,6 +331,68 @@ export class BookQueries {
     transaction();
   }
 
+  // Up Next: not-started books on the reading list, in reading order
+  static getUpNextBooks(): Book[] {
+    const rows = db.prepare(`
+      SELECT ${BOOK_COLUMNS}
+      FROM books
+      WHERE status = 'not_started' AND unscheduled = 0 AND parallel_track = 0
+      ORDER BY position ASC
+    `).all() as any[];
+    return rows.map(mapBookRow);
+  }
+
+  /**
+   * Saves a new Up Next order. Must contain exactly the current Up Next books;
+   * they are renumbered from where the list currently starts, and each takes
+   * the phase given for it (the section it was dropped into).
+   */
+  static saveUpNextOrder(order: Array<{ id: number; phase?: string | null | undefined }>): void {
+    db.transaction(() => {
+      const current = this.getUpNextBooks();
+      const currentIds = new Set(current.map(book => book.id));
+      const orderIds = new Set(order.map(item => item.id));
+      if (orderIds.size !== order.length || orderIds.size !== currentIds.size ||
+          [...orderIds].some(id => !currentIds.has(id))) {
+        throw new Error('Up Next order must list each Up Next book exactly once');
+      }
+
+      const start = Math.floor(Math.min(...current.map(book => book.position)));
+      const update = db.prepare('UPDATE books SET position = ?, phase = COALESCE(?, phase) WHERE id = ?');
+      order.forEach((item, index) => update.run(start + index, item.phase ?? null, item.id));
+    })();
+  }
+
+  /** End of the Up Next list: the position and phase a new book should take there. */
+  static getUpNextTail(): { position: number; phase: string | null } {
+    const upNext = this.getUpNextBooks();
+    const last = upNext[upNext.length - 1];
+    if (last) return { position: Math.floor(last.position) + 1, phase: last.phase ?? null };
+
+    const row = db.prepare('SELECT MAX(position) AS maxPosition FROM books WHERE position < 1000').get() as { maxPosition: number | null };
+    return { position: Math.floor(row.maxPosition ?? 0) + 1, phase: null };
+  }
+
+  /** Moves a not-started book off Up Next (to the Unscheduled shelf) or back onto the end of it. */
+  static setUnscheduled(id: number, unscheduled: boolean): Book | null {
+    return db.transaction(() => {
+      if (unscheduled) {
+        const row = db.prepare('SELECT MAX(position) AS maxPosition FROM books').get() as { maxPosition: number | null };
+        const position = Math.max(1000, Math.floor(row.maxPosition ?? 0) + 1);
+        db.prepare('UPDATE books SET unscheduled = 1, position = ? WHERE id = ?').run(position, id);
+      } else {
+        const tail = this.getUpNextTail();
+        db.prepare('UPDATE books SET unscheduled = 0, position = ?, phase = COALESCE(?, phase) WHERE id = ?')
+          .run(tail.position, tail.phase, id);
+      }
+      return this.getBookById(id);
+    })();
+  }
+
+  static countHighlights(id: number): number {
+    return (db.prepare('SELECT COUNT(*) AS n FROM highlights WHERE book_id = ?').get(id) as { n: number }).n;
+  }
+
   // Delete book
   static deleteBook(id: number): boolean {
     const query = 'DELETE FROM books WHERE id = ?';
@@ -332,22 +410,7 @@ export class BookQueries {
   // Search books by title or author
   static searchBooks(searchTerm: string): Book[] {
     const query = `
-      SELECT 
-        id,
-        title,
-        authors,
-        position,
-        status,
-        progress_percentage as progressPercentage,
-        total_pages as totalPages,
-        current_page as currentPage,
-        started_date as startedDate,
-        completed_date as completedDate,
-        personal_rating as personalRating,
-        personal_review as personalReview,
-        cover_image_url as coverImageUrl,
-        created_at as createdAt,
-        updated_at as updatedAt
+      SELECT ${BOOK_COLUMNS}
       FROM books 
       WHERE title LIKE ? OR authors LIKE ?
       ORDER BY 
@@ -362,9 +425,6 @@ export class BookQueries {
     
     const searchPattern = `%${searchTerm}%`;
     const rows = db.prepare(query).all(searchPattern, searchPattern) as any[];
-    return rows.map(row => ({
-      ...row,
-      authors: JSON.parse(row.authors)
-    }));
+    return rows.map(mapBookRow);
   }
 }

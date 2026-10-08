@@ -16,6 +16,11 @@ export interface Book {
   personalRating?: number;
   personalReview?: string;
   coverImageUrl?: string;
+  phase?: string | null;
+  milestone?: string | null;
+  category?: string | null;
+  parallelTrack: boolean;
+  unscheduled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -69,6 +74,10 @@ export interface CreateBookRequest {
   status?: ReadingStatus;
   totalPages?: number;
   coverImageUrl?: string;
+  phase?: string;
+  milestone?: string;
+  category?: string;
+  unscheduled?: boolean;
 }
 
 export interface UpdateBookProgressRequest {
