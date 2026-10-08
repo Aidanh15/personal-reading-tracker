@@ -6,7 +6,7 @@ import { DatabaseSeeder, KindleImportStats } from '../database/seed';
 /**
  * Imports Kindle highlights from a folder of clippings.io Markdown exports
  * (one file per book). The folder is kept in sync from Google Drive on the
- * host (rclone); clippings.io Auto Export rewrites a book's file whenever it
+ * host (scripts/sync-clippings.sh); clippings.io Auto Export rewrites a book's file whenever it
  * gains highlights. Only new or changed files are read, and the importer skips
  * highlights already stored, so re-reading a file never duplicates anything.
  */
