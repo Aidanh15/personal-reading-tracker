@@ -84,6 +84,33 @@ CREATE INDEX IF NOT EXISTS idx_highlight_reviews_next_review ON highlight_review
 CREATE INDEX IF NOT EXISTS idx_highlight_reviews_favorite ON highlight_reviews (favorite);
 CREATE INDEX IF NOT EXISTS idx_daily_review_queue_date ON daily_review_queue (review_date, sort_order);
 
+-- Discuss with Claude: one row per discussion of a (completed) book
+CREATE TABLE IF NOT EXISTS discussions (
+    id INTEGER PRIMARY KEY,
+    book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    claude_session_id TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'reviewed')),
+    model TEXT,
+    review_draft TEXT,
+    review_rating REAL,
+    applied_at TEXT, -- when the draft was saved as the book's review
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Full transcript of each discussion (kept even if Claude's own session is lost)
+CREATE TABLE IF NOT EXISTS discussion_messages (
+    id INTEGER PRIMARY KEY,
+    discussion_id INTEGER NOT NULL REFERENCES discussions(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    kind TEXT NOT NULL DEFAULT 'chat' CHECK (kind IN ('chat', 'review')),
+    content TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_discussions_book ON discussions (book_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_discussion_messages_discussion ON discussion_messages (discussion_id, id);
+
 -- Triggers to automatically update the updated_at timestamp
 CREATE TRIGGER IF NOT EXISTS update_books_timestamp 
     AFTER UPDATE ON books
@@ -104,4 +131,11 @@ CREATE TRIGGER IF NOT EXISTS update_highlight_reviews_timestamp
     FOR EACH ROW
     BEGIN
         UPDATE highlight_reviews SET updated_at = CURRENT_TIMESTAMP WHERE highlight_id = NEW.highlight_id;
+    END;
+
+CREATE TRIGGER IF NOT EXISTS update_discussions_timestamp
+    AFTER UPDATE ON discussions
+    FOR EACH ROW
+    BEGIN
+        UPDATE discussions SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
     END;
