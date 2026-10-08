@@ -13,6 +13,7 @@ import { booksRouter } from './routes/books';
 import { highlightsRouter } from './routes/highlights';
 import { reviewRouter } from './routes/review';
 import { searchRouter } from './routes/search';
+import { bookDiscussionsRouter, claudeRouter, discussionsRouter } from './routes/discussions';
 import { getLastClippingsSync, startClippingsSync, syncClippingsFolder } from './services/clippingsSync';
 
 // Load environment variables
@@ -225,6 +226,9 @@ app.post('/api/logs/rotate', (_req, res) => {
 });
 
 // API routes
+app.use('/api/books', bookDiscussionsRouter);
+app.use('/api/discussions', discussionsRouter);
+app.use('/api/claude', claudeRouter);
 app.use('/api/books', booksRouter);
 app.use('/api/highlights', highlightsRouter);
 app.use('/api/review', reviewRouter);

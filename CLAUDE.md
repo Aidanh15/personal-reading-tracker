@@ -50,13 +50,20 @@ clippings.io Auto Export writes one Markdown file per book into a Google Drive f
 
 Title matching is strict. An export file whose title doesn't match an existing book creates a new book on the Unscheduled shelf. To prevent a duplicate, rename the existing book so its main title (before `:`/`,`/`;`) matches the export file name.
 
+## Discuss with Claude
+
+On a completed book, "Discuss with Claude" opens a chat (`/books/:id/discuss/:discussionId`). Claude interviews the reader about the book, then writes a review in their voice that can be saved as the book's review. Ratings are quarter stars (1-5 in 0.25 steps).
+
+- **Bridge:** `bridge/server.mjs` is a host service (systemd `claude-bridge`, user `pi`, Node 18, no dependencies). It runs `claude -p` per turn, using the Pi's logged-in Claude Code, so usage counts against the Claude plan. It listens only on `172.17.0.1:3010` (Docker bridge) and requires a bearer token. The session only gets WebSearch/WebFetch; user plugins, hooks, MCP servers and CLAUDE.md are not loaded. Logs: `journalctl -u claude-bridge`. Tests: `node --test bridge/`.
+- **Env (gitignored):** `.env.bridge` holds `CLAUDE_BRIDGE_TOKEN` and `CLAUDE_BRIDGE_MODEL` (default `opus`; restart the service after changing it). `.env.ssd` holds `CLAUDE_BRIDGE_URL` and the same token.
+- **Backend:** `services/discussions.ts` (turns, one at a time per discussion, retry, recovery), `services/discussionPrompts.ts` (prompts, review parsing), `services/claudeBridge.ts`, `routes/discussions.ts` (SSE). Transcripts live in `discussions`/`discussion_messages`. If Claude's session is lost, the next turn replays the saved transcript into a new session automatically.
+
 ## Pending deploy
 
 Changes committed but not yet live (clear this list after each `scripts/redeploy.sh`):
 
 - (none)
 
-
 ## Backlog (ideas, not started)
 
-- **Discuss with Claude (per book):** a button on each book that opens a guided discussion with Claude about it. The questions should be specific and well researched, grounded in the book itself. At the end, Claude writes a review *from the user's perspective*, based on their answers, which is saved on the book to look back on. Open questions: Claude API key and cost, using web search/research for less-known books, where to store transcripts, and whether the review becomes `personal_review` or a separate history.
+- (none)

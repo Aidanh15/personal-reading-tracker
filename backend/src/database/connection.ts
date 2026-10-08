@@ -2,6 +2,8 @@ import Database from 'better-sqlite3';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
+const QUARTER_STAR_RATING = 'personal_rating REAL CHECK (personal_rating >= 1 AND personal_rating <= 5 AND personal_rating * 4 = CAST(personal_rating * 4 AS INTEGER))';
+
 export class DatabaseConnection {
     private static instance: DatabaseConnection;
     private db: Database.Database;
@@ -62,6 +64,7 @@ export class DatabaseConnection {
             this.db.exec(schema);
             this.ensureDidNotFinishStatus();
             this.ensureReadingListColumns();
+            this.ensureQuarterStarRatings();
             // Recreate indexes and triggers if the compatibility migration rebuilt books.
             this.db.exec(schema);
             console.log('Database schema initialized successfully');
@@ -122,6 +125,53 @@ export class DatabaseConnection {
                 COMMIT;
             `);
             console.log('Database upgraded to support did-not-finish books');
+        } catch (error) {
+            if (this.db.inTransaction) this.db.exec('ROLLBACK');
+            throw error;
+        } finally {
+            this.db.pragma('foreign_keys = ON');
+        }
+    }
+
+    /**
+     * Ratings moved from whole stars to quarter stars (4.25). Like the DNF
+     * upgrade, this needs a one-time rebuild of books; every column present
+     * (including ones added later by ALTER TABLE) is copied by name, ids kept.
+     */
+    private ensureQuarterStarRatings(): void {
+        const booksTable = this.db.prepare(`
+            SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'books'
+        `).get() as { sql: string } | undefined;
+
+        if (!booksTable || booksTable.sql.includes('personal_rating REAL')) {
+            return;
+        }
+
+        const oldRating = /personal_rating INTEGER CHECK \(personal_rating >= 1 AND personal_rating <= 5\)/;
+        if (!oldRating.test(booksTable.sql)) {
+            console.warn('Quarter-star upgrade skipped: unrecognised books.personal_rating definition');
+            return;
+        }
+
+        const createSql = booksTable.sql
+            .replace(/^CREATE TABLE\s+("?)books\1/, 'CREATE TABLE books_rating_upgrade')
+            .replace(oldRating, QUARTER_STAR_RATING);
+        const columns = (this.db.prepare('PRAGMA table_info(books)').all() as { name: string }[])
+            .map(column => `"${column.name}"`)
+            .join(', ');
+
+        this.db.pragma('foreign_keys = OFF');
+        try {
+            this.db.exec(`
+                BEGIN;
+                DROP TABLE IF EXISTS books_rating_upgrade;
+                ${createSql};
+                INSERT INTO books_rating_upgrade (${columns}) SELECT ${columns} FROM books;
+                DROP TABLE books;
+                ALTER TABLE books_rating_upgrade RENAME TO books;
+                COMMIT;
+            `);
+            console.log('Database upgraded to quarter-star ratings');
         } catch (error) {
             if (this.db.inTransaction) this.db.exec('ROLLBACK');
             throw error;

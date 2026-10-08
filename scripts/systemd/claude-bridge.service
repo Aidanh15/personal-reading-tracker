@@ -1,0 +1,15 @@
+[Unit]
+Description=claude-bridge: lets the reading tracker container run Claude Code turns on the host
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+User=pi
+EnvironmentFile=/mnt/SSD/projects/personal-reading-tracker/.env.bridge
+Environment=PATH=/home/pi/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/node /mnt/SSD/projects/personal-reading-tracker/bridge/server.mjs
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

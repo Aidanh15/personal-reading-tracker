@@ -72,7 +72,7 @@ const shouldRetry = (error: any): boolean => {
   return false;
 };
 
-const apiBaseURL = import.meta.env.VITE_API_URL || '/api';
+export const apiBaseURL = import.meta.env.VITE_API_URL || '/api';
 
 // Create axios instance with base configuration
 const api = axios.create({

@@ -13,11 +13,13 @@ export { default as SearchResults } from './SearchResults';
 export { default as Toast } from './Toast';
 export { default as ToastContainer } from './ToastContainer';
 export { default as OfflineIndicator } from './OfflineIndicator';
+export { default as StarRating } from './StarRating';
 
 export type { ButtonProps } from './Button';
 export type { InputProps } from './Input';
 export type { TextAreaProps } from './TextArea';
 export type { ModalProps } from './Modal';
 export type { ProgressTrackerProps } from './ProgressTracker';
+export type { StarRatingProps } from './StarRating';
 export type { GridProps } from './Grid';
 export type { ToastProps, ToastType } from './Toast';

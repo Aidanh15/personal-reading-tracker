@@ -133,6 +133,7 @@ reading-list.json
 # Local deployment state (SSD checkout)
 .env.ssd
 .env.clippings
+.env.bridge
 imports/
 backups/
 data-pre-*/

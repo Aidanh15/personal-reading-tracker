@@ -3,6 +3,7 @@ import { Book, ProgressUpdateData } from '../../types';
 import Button from './Button';
 import Input from './Input';
 import ProgressBar from './ProgressBar';
+import StarRating from './StarRating';
 
 export interface ProgressTrackerProps {
   book: Book;
@@ -149,20 +150,7 @@ function ProgressTracker({ book, onUpdateProgress, loading = false }: ProgressTr
           {book.personalRating && book.personalRating > 0 && (
             <div className="flex items-center space-x-2">
               <span className="text-sm font-medium text-gray-700">Rating:</span>
-              <div className="flex items-center">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <svg
-                    key={star}
-                    className={`h-4 w-4 ${star <= book.personalRating! ? 'text-yellow-400' : 'text-gray-300'
-                      }`}
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                ))}
-                <span className="ml-1 text-sm text-gray-600">({book.personalRating}/5)</span>
-              </div>
+              <StarRating value={book.personalRating} />
             </div>
           )}
 
@@ -243,30 +231,11 @@ function ProgressTracker({ book, onUpdateProgress, loading = false }: ProgressTr
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Personal Rating (Optional)
           </label>
-          <div className="flex items-center space-x-1">
-            {[1, 2, 3, 4, 5].map((star) => (
-              <button
-                key={star}
-                type="button"
-                onClick={() => setFormData(prev => ({ ...prev, personalRating: star }))}
-                className={`p-1 rounded hover:bg-gray-100 ${star <= formData.personalRating ? 'text-yellow-400' : 'text-gray-300'
-                  }`}
-              >
-                <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                </svg>
-              </button>
-            ))}
-            {formData.personalRating > 0 && (
-              <button
-                type="button"
-                onClick={() => setFormData(prev => ({ ...prev, personalRating: 0 }))}
-                className="ml-2 text-sm text-gray-500 hover:text-gray-700"
-              >
-                Clear
-              </button>
-            )}
-          </div>
+          <StarRating
+            size="md"
+            value={formData.personalRating || null}
+            onChange={rating => setFormData(prev => ({ ...prev, personalRating: rating ?? 0 }))}
+          />
         </div>
 
         {/* Personal Review */}
