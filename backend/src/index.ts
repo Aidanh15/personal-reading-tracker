@@ -13,6 +13,7 @@ import { booksRouter } from './routes/books';
 import { highlightsRouter } from './routes/highlights';
 import { reviewRouter } from './routes/review';
 import { searchRouter } from './routes/search';
+import { getLastClippingsSync, startClippingsSync, syncClippingsFolder } from './services/clippingsSync';
 
 // Load environment variables
 dotenv.config();
@@ -228,6 +229,14 @@ app.use('/api/books', booksRouter);
 app.use('/api/highlights', highlightsRouter);
 app.use('/api/review', reviewRouter);
 app.use('/api/search', searchRouter);
+
+// Kindle highlight sync from the clippings.io export folder
+app.get('/api/sync/clippings', (_req, res) => {
+    res.json({ lastRun: getLastClippingsSync() });
+});
+app.post('/api/sync/clippings', (_req, res) => {
+    res.json({ lastRun: syncClippingsFolder() });
+});
 
 // Test endpoint for Google Images search
 app.get('/api/test-cover/:bookId', async (req, res) => {
@@ -515,6 +524,8 @@ const server = app.listen(PORT, () => {
     console.log(`📊 Metrics: http://localhost:${PORT}/api/metrics`);
     console.log(`🌍 Environment: ${NODE_ENV}`);
     console.log(`💾 Database: ${process.env['DATABASE_PATH'] || './data/reading-tracker.db'}`);
+
+    startClippingsSync();
 
     // Start monitoring service with reduced frequency for Pi
     if (NODE_ENV === 'production') {

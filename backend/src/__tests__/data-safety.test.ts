@@ -5,7 +5,7 @@
  * may lose or change progress, ratings, reviews, highlights or review state.
  */
 import Database from 'better-sqlite3';
-import { mkdtempSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { DatabaseSeeder } from '../database/seed';
@@ -14,6 +14,7 @@ import { HighlightQueries } from '../database/queries/highlights';
 import { db } from '../database/connection';
 import { applyReadingList } from '../database/applyReadingList';
 import { findBookByTitle } from '../database/library';
+import { syncClippingsFolder } from '../services/clippingsSync';
 import { Book } from '../types';
 
 const workDir = mkdtempSync(join(tmpdir(), 'reading-tracker-fixtures-'));
@@ -188,6 +189,39 @@ describe('Kindle import title matching', () => {
         expect(findBookByTitle('Stoner, A Novel (Vintage Classics)', ['Unknown'], books)?.title).toBe('Stoner');
         expect(findBookByTitle('The Road', ['Unknown'], books)?.title).toBe('The Road');
         expect(findBookByTitle('The Road to Wigan Pier', ['George Orwell'], books)).toBeUndefined();
+    });
+});
+
+describe('clippings.io folder sync', () => {
+    it('imports only new highlights from new or changed export files, leaving existing ones alone', () => {
+        const folder = join(workDir, `clippings-${Date.now()}`);
+        mkdirSync(folder);
+        const deadSouls = bookByTitle('Dead Souls');
+        const existing = HighlightQueries.getHighlightsByBookId(deadSouls.id)[0]!;
+        const before = savedState();
+
+        const file = join(folder, 'Dead Souls (Penguin Classics).md');
+        writeFileSync(file, `${existing.quoteText}\n\n\nA second passage from Dead Souls that arrived in a later export.\n\n\n`);
+        const first = syncClippingsFolder(folder);
+        expect(first).toMatchObject({ filesSeen: 1, filesImported: 1, highlightsImported: 1, booksCreated: 0 });
+
+        // Unchanged file: not even read again
+        expect(syncClippingsFolder(folder)).toMatchObject({ filesSeen: 1, filesImported: 0, highlightsImported: 0 });
+
+        // clippings.io rewrites the whole file when the book gains a highlight
+        writeFileSync(file, `${readFileSync(file, 'utf-8')}A third passage from Dead Souls, highlighted much later on.\n\n\n`);
+        utimesSync(file, new Date(), new Date(Date.now() + 5000));
+        expect(syncClippingsFolder(folder)).toMatchObject({ filesImported: 1, highlightsImported: 1 });
+
+        const after = savedState();
+        expect(after.highlights.slice(0, before.highlights.length)).toEqual(before.highlights);
+        expect(after.reviews).toEqual(before.reviews);
+        expect(after.books).toEqual(before.books);
+        expect(HighlightQueries.getHighlightsByBookId(deadSouls.id)).toHaveLength(3);
+    });
+
+    it('reports a missing folder without failing', () => {
+        expect(syncClippingsFolder(join(workDir, 'does-not-exist')).error).toBe('Sync folder not found');
     });
 });
 

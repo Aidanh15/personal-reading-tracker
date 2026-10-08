@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ArrowUpRightIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { Book } from '../../types';
-import { getMilestone, isParallelTrack } from '../../data/readingPlan';
 import ProgressBar from './ProgressBar';
 import BookCover from '../BookCover';
 
@@ -13,7 +12,7 @@ interface BookCardProps {
 }
 
 function BookCard({ book, onClick, showPosition = false, variant = 'default' }: BookCardProps) {
-  const milestone = Number.isInteger(book.position) ? getMilestone(book.position) : undefined;
+  const milestone = book.milestone;
   const isDetailed = variant === 'detailed';
   const statusLabel = book.status === 'completed'
     ? 'Read'
@@ -36,7 +35,7 @@ function BookCard({ book, onClick, showPosition = false, variant = 'default' }: 
         />
         {showPosition && (
           <span className="absolute -left-2 -top-2 grid min-h-8 min-w-8 place-items-center rounded-full border-2 border-paper-50 bg-ink-950 px-1.5 font-mono text-[11px] font-semibold text-paper-50 shadow-lg">
-            {isParallelTrack(book.title) ? 'P' : book.position}
+            {book.parallelTrack ? 'P' : book.position}
           </span>
         )}
       </div>
@@ -68,7 +67,7 @@ function BookCard({ book, onClick, showPosition = false, variant = 'default' }: 
             </div>
           ) : (
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400">
-              {showPosition && !isParallelTrack(book.title) ? `Master list · ${String(book.position).padStart(3, '0')}` : 'In the library'}
+              {showPosition && !book.parallelTrack ? `Master list · ${String(book.position).padStart(3, '0')}` : 'In the library'}
             </p>
           )}
         </div>

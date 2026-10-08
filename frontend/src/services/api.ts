@@ -1,6 +1,8 @@
 import axios, { AxiosResponse, AxiosError } from 'axios';
 import { 
+  AddToUpNextData,
   Book, 
+  BookCandidate,
   Highlight, 
   SearchResult, 
   BookFormData, 
@@ -169,6 +171,32 @@ export const booksApi = {
     return retryRequest(async () => {
       await api.delete(`/books/${id}`);
     });
+  },
+
+  // Candidate books (with covers) for adding to the reading list
+  async lookup(query: string, signal?: AbortSignal): Promise<BookCandidate[]> {
+    const response = await api.get<{ candidates: BookCandidate[] }>('/books/lookup', {
+      params: { q: query },
+      ...(signal && { signal }),
+    });
+    return response.data.candidates;
+  },
+
+  // Adds a book to the end of Up Next; the server downloads its cover (can be slow)
+  async addToUpNext(data: AddToUpNextData): Promise<Book> {
+    const response = await api.post<{ book: Book }>('/books/up-next', data, { timeout: 60000 });
+    return response.data.book;
+  },
+
+  // Saves the Up Next order; each book takes the phase of the section it sits in
+  async saveUpNextOrder(order: Array<{ id: number; phase: string | null }>): Promise<void> {
+    await api.put('/books/up-next', { order });
+  },
+
+  // Moves a not-started book off Up Next (Unscheduled shelf) or back onto it
+  async setUnscheduled(id: number, unscheduled: boolean): Promise<Book> {
+    const response = await api.put<{ book: Book }>(`/books/${id}/schedule`, { unscheduled });
+    return response.data.book;
   },
 
   // Update book positions (for reordering)

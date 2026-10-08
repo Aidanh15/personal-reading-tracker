@@ -15,8 +15,27 @@ export interface Book {
   personalRating?: number;
   personalReview?: string;
   coverImageUrl?: string;
+  phase?: string | null;
+  milestone?: string | null;
+  category?: string | null;
+  parallelTrack: boolean;
+  unscheduled: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+// A search result offered when adding a book to the list
+export interface BookCandidate {
+  title: string;
+  authors: string[];
+  year?: number;
+  coverUrl?: string;
+}
+
+export interface AddToUpNextData {
+  title: string;
+  authors: string[];
+  coverUrl?: string;
 }
 
 // Highlight types

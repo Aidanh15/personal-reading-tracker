@@ -2,30 +2,37 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRightIcon,
+  ArrowUturnLeftIcon,
   BookOpenIcon,
   BookmarkSquareIcon,
   ChartBarIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  PlusIcon,
   SparklesIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline';
 import { useBooks } from '../contexts/BooksContext';
-import { reviewApi } from '../services/api';
-import { Book, ReviewSummary } from '../types';
-import { getPhase, isParallelTrack, ReadingPhase } from '../data/readingPlan';
+import { useNotification } from '../contexts/NotificationContext';
+import { booksApi, reviewApi } from '../services/api';
+import { AddToUpNextData, Book, ReviewSummary } from '../types';
 import LoadingSpinner from '../components/UI/LoadingSpinner';
 import BookCard from '../components/UI/BookCard';
+import UpNextList from '../components/UpNext/UpNextList';
+import AddBookSheet from '../components/UpNext/AddBookSheet';
+import RemoveBookSheet from '../components/UpNext/RemoveBookSheet';
 
-interface PhaseGroup {
-  phase: ReadingPhase;
-  books: Book[];
-}
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'Please try again.';
 
 function Dashboard() {
   const { books, loading, error, fetchBooks } = useBooks();
   const [showCompletedBooks, setShowCompletedBooks] = useState(false);
   const [showDnfBooks, setShowDnfBooks] = useState(false);
+  const [showUnscheduled, setShowUnscheduled] = useState(false);
   const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [removing, setRemoving] = useState<{ book: Book; fromUpNext: boolean } | null>(null);
+  const { showSuccess, showError } = useNotification();
 
   useEffect(() => { fetchBooks(); }, [fetchBooks]);
   useEffect(() => {
@@ -36,19 +43,61 @@ function Dashboard() {
   const inProgressBooks = sortedBooks.filter(book => book.status === 'in_progress');
   const completedBooks = sortedBooks.filter(book => book.status === 'completed');
   const dnfBooks = sortedBooks.filter(book => book.status === 'did_not_finish');
-  const parallelBook = sortedBooks.find(book => isParallelTrack(book.title));
-  const upNextBooks = sortedBooks.filter(book => book.status === 'not_started' && !isParallelTrack(book.title));
-  const phaseGroups = upNextBooks.reduce<PhaseGroup[]>((groups, book) => {
-    const phase = getPhase(book.position);
-    const existing = groups.find(group => group.phase.id === phase.id);
-    if (existing) existing.books.push(book);
-    else groups.push({ phase, books: [book] });
-    return groups;
-  }, []);
-  const masterBooks = books.filter(book => book.position >= 1 && book.position <= 150 && Number.isInteger(book.position));
-  const masterCompleted = masterBooks.filter(book => book.status === 'completed').length;
-  const journeyProgress = masterBooks.length ? Math.round((masterCompleted / 150) * 100) : 0;
+  const parallelBook = sortedBooks.find(book => book.parallelTrack);
+  const upNextBooks = useMemo(
+    () => sortedBooks.filter(book => book.status === 'not_started' && !book.unscheduled && !book.parallelTrack),
+    [sortedBooks]
+  );
+  const unscheduledBooks = sortedBooks.filter(book => book.status === 'not_started' && book.unscheduled);
+  // The numbered list runs from #1 to the last Up Next book; finished books off the list sit at 1000+
+  const listLength = Math.floor(Math.max(0, ...sortedBooks.filter(book => book.position < 1000 && !book.parallelTrack).map(book => book.position)));
+  const masterCompleted = books.filter(book => book.status === 'completed' && book.position <= listLength).length;
+  const journeyProgress = listLength ? Math.round((masterCompleted / listLength) * 100) : 0;
   const nextBook = upNextBooks[0];
+
+  const saveOrder = async (order: Array<{ id: number; phase: string | null }>) => {
+    try {
+      await booksApi.saveUpNextOrder(order);
+      await fetchBooks();
+    } catch (error) {
+      showError('Couldn\'t save the new order', errorMessage(error));
+      await fetchBooks();
+      throw error;
+    }
+  };
+
+  const addBook = async (data: AddToUpNextData) => {
+    try {
+      const book = await booksApi.addToUpNext(data);
+      await fetchBooks();
+      showSuccess(`Added ${book.title}`, `#${book.position}, at the end of Up Next${book.coverImageUrl ? '' : ' (no cover found)'}`);
+    } catch (error) {
+      showError('Couldn\'t add the book', errorMessage(error));
+      throw error;
+    }
+  };
+
+  const setUnscheduled = async (book: Book, unscheduled: boolean) => {
+    try {
+      await booksApi.setUnscheduled(book.id, unscheduled);
+      await fetchBooks();
+      showSuccess(unscheduled ? `Moved ${book.title} to Unscheduled` : `${book.title} is back on Up Next`);
+    } catch (error) {
+      showError('Couldn\'t move the book', errorMessage(error));
+      throw error;
+    }
+  };
+
+  const deleteBook = async (book: Book) => {
+    try {
+      await booksApi.delete(book.id);
+      await fetchBooks();
+      showSuccess(`Deleted ${book.title}`);
+    } catch (error) {
+      showError('Couldn\'t delete the book', errorMessage(error));
+      throw error;
+    }
+  };
 
   if (loading && books.length === 0) {
     return <div className="grid h-72 place-items-center"><LoadingSpinner size="lg" /></div>;
@@ -91,7 +140,7 @@ function Dashboard() {
             </div>
             <div className="mt-5 flex items-end justify-between">
               <div>
-                <p className="font-display text-3xl">{masterCompleted}<span className="text-paper-200/30"> / 150</span></p>
+                <p className="font-display text-3xl">{masterCompleted}<span className="text-paper-200/30"> / {listLength}</span></p>
                 <p className="mt-1 text-xs text-paper-200/50">books completed</p>
               </div>
               {nextBook && <span className="rounded-full border border-paper-50/10 px-3 py-1.5 font-mono text-[9px] uppercase tracking-wider text-copper-300">Next · #{nextBook.position}</span>}
@@ -164,31 +213,64 @@ function Dashboard() {
         </section>
       )}
 
-      {upNextBooks.length > 0 && (
-        <section>
-          <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div><p className="eyebrow">The master sequence</p><h2 className="mt-2 font-display text-4xl text-ink-950">Up Next</h2></div>
-            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-ink-400">Your reading order · {upNextBooks.length} remaining</span>
+      <section>
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="eyebrow">The master sequence</p>
+            <h2 className="mt-2 font-display text-4xl text-ink-950">Up Next</h2>
+            <p className="mt-2 text-xs text-ink-400">
+              Press and hold a book to move it · swipe left to remove
+            </p>
           </div>
+          <div className="flex items-center gap-4">
+            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-ink-400">{upNextBooks.length} remaining</span>
+            <button onClick={() => setAdding(true)} className="btn-primary gap-2 !px-4">
+              <PlusIcon className="h-4 w-4" /> Add book
+            </button>
+          </div>
+        </div>
 
-          <div className="space-y-12">
-            {phaseGroups.map(group => (
-              <div key={group.phase.id} className="relative border-t border-ink-900/10 pt-6">
-                <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between">
-                  <div className="flex items-baseline gap-3">
-                    <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-copper-600">
-                      {group.phase.number ? `Phase ${group.phase.number}` : group.phase.title}
-                    </span>
-                    <h3 className="font-display text-2xl text-ink-900">{group.phase.number ? group.phase.title : group.phase.shortTitle}</h3>
+        {upNextBooks.length > 0 ? (
+          <UpNextList
+            books={upNextBooks}
+            onReorder={saveOrder}
+            onRemove={book => setRemoving({ book, fromUpNext: true })}
+          />
+        ) : (
+          <p className="card text-center text-sm text-ink-500">Nothing queued. Add a book to start the list.</p>
+        )}
+      </section>
+
+      {unscheduledBooks.length > 0 && (
+        <section className="border-t border-ink-900/10 pt-8">
+          <button onClick={() => setShowUnscheduled(value => !value)} className="flex w-full items-center justify-between text-left">
+            <div><p className="eyebrow">Off the list</p><h2 className="mt-2 font-display text-3xl text-ink-950">Unscheduled ({unscheduledBooks.length})</h2></div>
+            <span className="flex items-center gap-2 rounded-full border border-ink-900/10 bg-paper-50 px-4 py-2 text-xs font-semibold text-ink-600">
+              {showUnscheduled ? 'Hide' : 'Show'}
+              {showUnscheduled ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
+            </span>
+          </button>
+          {showUnscheduled && (
+            <div className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {unscheduledBooks.map(book => (
+                <div key={book.id} className="flex flex-col gap-2">
+                  <BookCard book={book} variant="compact" />
+                  <div className="flex gap-2">
+                    <button onClick={() => setUnscheduled(book, false).catch(() => undefined)} className="btn-secondary flex-1 gap-2 !py-2 !text-xs">
+                      <ArrowUturnLeftIcon className="h-3.5 w-3.5" /> Back to Up Next
+                    </button>
+                    <button
+                      onClick={() => setRemoving({ book, fromUpNext: false })}
+                      className="btn-secondary !px-3 !py-2 !text-rose-700"
+                      aria-label={`Delete ${book.title}`}
+                    >
+                      <TrashIcon className="h-3.5 w-3.5" />
+                    </button>
                   </div>
-                  <span className="font-mono text-[9px] uppercase tracking-wider text-ink-400">{group.books.length} books</span>
                 </div>
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                  {group.books.map(book => <BookCard key={book.id} book={book} showPosition />)}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
@@ -218,14 +300,13 @@ function Dashboard() {
         </section>
       )}
 
-      {books.length === 0 && (
-        <div className="card py-16 text-center">
-          <BookOpenIcon className="mx-auto h-10 w-10 text-copper-500" />
-          <h3 className="mt-5 font-display text-3xl text-ink-950">No books yet</h3>
-          <p className="mt-2 text-sm text-ink-500">Start building your reading list by adding your first book.</p>
-          <button className="btn-primary mt-6">Add Your First Book</button>
-        </div>
-      )}
+      <AddBookSheet open={adding} onClose={() => setAdding(false)} onAdd={addBook} />
+      <RemoveBookSheet
+        book={removing?.book ?? null}
+        onClose={() => setRemoving(null)}
+        {...(removing?.fromUpNext && { onUnschedule: (book: Book) => setUnscheduled(book, true) })}
+        onDelete={deleteBook}
+      />
     </div>
   );
 }

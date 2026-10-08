@@ -39,6 +39,8 @@ Changes committed but not yet live (clear this list after each `scripts/redeploy
 
 - Reading-list editing backend: new `books` columns (phase, milestone, category, parallel_track, unscheduled); Up Next API (`GET /books/lookup`, `POST`/`PUT /books/up-next`, `PUT /books/:id/schedule`); delete refused while a book has highlights.
 - Startup reading-plan sync retired (the DB is now the source of truth). The Kindle importer uses strict title matching; unknown titles go to Unscheduled.
+- Up Next editing UI: press-and-hold to reorder (@dnd-kit), swipe left (or the hover trash button) to remove with confirmation (Unscheduled or delete), Add book with Open Library/Google Books search and covers, Unscheduled shelf. Phases and milestones are now per book (`frontend/src/data/readingPlan.ts` removed).
+- Kindle highlight auto-sync, app side: `services/clippingsSync.ts` imports new/changed clippings.io Markdown files from `imports/clippings/` every 30 min (`CLIPPINGS_SYNC_MINUTES`, `CLIPPINGS_SYNC_DIR`); `GET`/`POST /api/sync/clippings`. Host side still to do: rclone from Google Drive into `imports/clippings/` (waiting on the user's clippings.io Auto Export setup).
 - **After deploying, run once:** `docker exec reading-tracker-ui-test sh -c 'cd backend && node dist/scripts/seed.js apply-reading-list --dry-run'`, review the report, then run it without `--dry-run`. This applies `list.txt` (Oct 2026) and cleans up duplicate books and misattributed highlights.
 
 ## Backlog (ideas, not started)

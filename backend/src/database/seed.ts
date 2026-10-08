@@ -8,13 +8,13 @@ import { CoverService, CoverSearchResult } from '../services/coverService';
 import { readZipTextEntries } from '../utils/zip';
 import { findBookByTitle } from './library';
 
-interface ParsedBook {
+export interface ParsedBook {
     title: string;
     authors: string[];
     highlights: CreateHighlightRequest[];
 }
 
-interface KindleImportStats {
+export interface KindleImportStats {
     booksParsed: number;
     booksMatched: number;
     booksCreated: number;
@@ -289,8 +289,11 @@ export class DatabaseSeeder {
 
     static importKindleHighlights(filePath: string): KindleImportStats {
         console.log(`Importing Kindle highlights from: ${filePath}`);
+        return this.importParsedBooks(this.parseKindleHighlights(filePath));
+    }
 
-        const parsedBooks = this.parseKindleHighlights(filePath);
+    /** Adds parsed highlights to the library, skipping any already stored on the matched book. */
+    static importParsedBooks(parsedBooks: ParsedBook[]): KindleImportStats {
         const stats: KindleImportStats = {
             booksParsed: parsedBooks.length,
             booksMatched: 0,
@@ -349,24 +352,26 @@ export class DatabaseSeeder {
         const parsedBooks: ParsedBook[] = [];
 
         for (const entry of markdownEntries) {
-            const rawTitle = this.cleanKindleMarkdownTitle(entry.name);
-            const override = this.findMetadataOverride(rawTitle);
-            const title = override?.title ?? rawTitle;
-            const highlights = this.parseKindleMarkdownHighlights(entry.content);
-
-            if (!title || highlights.length === 0) {
-                continue;
-            }
-
-            parsedBooks.push({
-                title,
-                authors: override?.authors ?? ['Unknown'],
-                highlights
-            });
+            const parsed = this.parseKindleMarkdownFile(entry.name, entry.content);
+            if (parsed) parsedBooks.push(parsed);
         }
 
         console.log(`Parsed ${parsedBooks.length} books with highlights from Kindle ZIP`);
         return parsedBooks;
+    }
+
+    /** One clippings.io Markdown export file: the filename is the title, passages are separated by blank lines. */
+    static parseKindleMarkdownFile(fileName: string, content: string): ParsedBook | null {
+        const rawTitle = this.cleanKindleMarkdownTitle(fileName);
+        const override = this.findMetadataOverride(rawTitle);
+        const title = override?.title ?? rawTitle;
+        const highlights = this.parseKindleMarkdownHighlights(content);
+
+        if (!title || highlights.length === 0) {
+            return null;
+        }
+
+        return { title, authors: override?.authors ?? ['Unknown'], highlights };
     }
 
     private static parseKindleMarkdownHighlights(content: string): CreateHighlightRequest[] {
