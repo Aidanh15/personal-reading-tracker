@@ -151,8 +151,8 @@ export const commonRules = {
     min: 1,
     max: 5,
     custom: (value: any) => {
-      if (value && !Number.isInteger(Number(value))) {
-        return 'Rating must be a whole number';
+      if (value && !Number.isInteger(Number(value) * 4)) {
+        return 'Rating must be in steps of 0.25';
       }
       return null;
     },
