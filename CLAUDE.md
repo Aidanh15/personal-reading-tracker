@@ -44,13 +44,18 @@ On startup, `scripts/docker-entrypoint.sh` seeds the DB only if it is empty. (Th
 - **Compose files:** `docker-compose*.yml` describe an older deployment on port 3003, retired Jul 2026. Don't `docker compose up` them: that would start a second instance on the same live DB. Use `scripts/redeploy.sh`.
 - **Old Codex worktree:** `/home/pi/Documents/Codex/2026-07-10-let-s-taking-a-look-at/reading-tracker-worktree` is a leftover worktree of this repo on the already-merged `feature/final-reading-list-modern-ui` branch.
 
+## Kindle highlight sync
+
+clippings.io Auto Export writes one Markdown file per book into a Google Drive folder shared as "anyone with the link" (no Google login on the Pi, by the user's choice). The folder ID lives only in `.env.clippings` (gitignored); never commit it, the repo is public. `scripts/sync-clippings.sh` curls that folder into `imports/clippings/`, rewriting a file only when its content changed. If anything changed, it POSTs `/api/sync/clippings` to import right away. It runs daily at ~06:00 from the `clippings-sync.timer` systemd unit (sources in `scripts/systemd/`, installed into `/etc/systemd/system/`). Logs: `journalctl -u clippings-sync`.
+
+Title matching is strict. An export file whose title doesn't match an existing book creates a new book on the Unscheduled shelf. To prevent a duplicate, rename the existing book so its main title (before `:`/`,`/`;`) matches the export file name.
+
 ## Pending deploy
 
 Changes committed but not yet live (clear this list after each `scripts/redeploy.sh`):
 
 - (none)
 
-Not deployable yet: Kindle highlight auto-sync, host side. rclone from Google Drive (clippings.io Auto Export folder) into `imports/clippings/`, scheduled once a day. Waiting on the user's clippings.io Auto Export setup. The app side is live.
 
 ## Backlog (ideas, not started)
 
