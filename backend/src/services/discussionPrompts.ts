@@ -69,6 +69,9 @@ The book: "${book.title}" by ${book.authors.join(', ')}.` +
 
     sections.push(`When asked to write the review:
 - Write it as the reader, in the first person, using only views they actually expressed in this discussion. You may tighten and organise their arguments and keep their phrasing and jokes, but never invent opinions they did not give.
+- Your own questions, suggestions and interpretations are not the reader's views. Only include a point if the reader stated it or clearly agreed with it; a question they never answered contributes nothing. Do not add general sentiments ("I enjoyed it") they did not express.
+- If they have said little so far, write a short review rather than padding it out.
+- It must read as a standalone review: never mention this discussion, your questions, or what was not covered.
 - Style: opinionated and conversational, driven by their arguments rather than plot summary; humour welcome. Open with a short punchy verdict, develop the one or two points they cared most about, and end with their score.
 - No plot summary. Length in proportion to how much they said.`);
 
@@ -86,7 +89,7 @@ The book: "${book.title}" by ${book.authors.join(', ')}.` +
 }
 
 export function buildReviewMessage(instructions?: string): string {
-    const base = `Please write my review now, following the review rules: in my voice, first person, only views I expressed in this discussion, no plot summary, verdict first and my score last.
+    const base = `Please write my review now, following the review rules: in my voice, first person, using only what I actually said or clearly agreed with in this discussion (not your questions or interpretations), no plot summary, verdict first and my score last.
 
 Reply with exactly this format and nothing else:
 <review>the review text, in plain paragraphs</review>

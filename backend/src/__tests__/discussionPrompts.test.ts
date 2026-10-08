@@ -53,6 +53,18 @@ describe('buildSystemPrompt', () => {
     });
 });
 
+describe('review faithfulness rules', () => {
+    it("tells Claude that its own questions and suggestions are not the reader's views", () => {
+        const prompt = buildSystemPrompt(book, [], []);
+        expect(prompt).toMatch(/your own questions, suggestions and interpretations are not the reader's views/i);
+        expect(buildReviewMessage()).toMatch(/only what I actually said or clearly agreed with/i);
+    });
+
+    it('asks for a standalone review that never mentions the discussion', () => {
+        expect(buildSystemPrompt(book, [], [])).toMatch(/never mention this discussion/i);
+    });
+});
+
 describe('turn messages', () => {
     it('kicks off with a fixed message', () => {
         expect(KICKOFF_MESSAGE).toBe('Start the discussion.');
