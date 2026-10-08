@@ -65,6 +65,15 @@ describe('review faithfulness rules', () => {
     });
 });
 
+describe('review offered in the chat', () => {
+    it('tells Claude to answer a yes with the tagged review format, not a review in prose', () => {
+        const prompt = buildSystemPrompt(book, [], []);
+        expect(prompt).toMatch(/if they ask you to write the review in the chat/i);
+        expect(prompt).toContain('<review>');
+        expect(prompt).toContain('<rating>');
+    });
+});
+
 describe('turn messages', () => {
     it('kicks off with a fixed message', () => {
         expect(KICKOFF_MESSAGE).toBe('Start the discussion.');

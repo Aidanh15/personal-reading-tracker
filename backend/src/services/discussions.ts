@@ -117,7 +117,8 @@ export function createDiscussionService(bridge: BridgeClient, model: string | nu
             }
 
             const message = DiscussionQueries.addMessage(discussionId, 'assistant', pending.kind, outcome.text);
-            if (pending.kind === 'review') {
+            // A review Claude wrote in the chat (the reader said yes to its offer) counts too
+            if (pending.kind === 'review' || outcome.text.includes('<review>')) {
                 const review = parseReview(outcome.text);
                 DiscussionQueries.saveReview(discussionId, review.draft, review.rating);
             }

@@ -166,6 +166,24 @@ describe('discussion service', () => {
             .toEqual([['user', 'review'], ['assistant', 'review']]);
     });
 
+    it('a review Claude writes in the chat (reader said "yes") becomes the draft', async () => {
+        const bridge = new FakeBridge([result('Q1?'), result('<review>Said yes</review><rating>3.75</rating>')]);
+        const { service, discussion } = await startedDiscussion(bridge);
+
+        await service.reply(discussion.id, 'Yes, write it', noop);
+
+        expect(DiscussionQueries.get(discussion.id)).toMatchObject({ status: 'reviewed', reviewDraft: 'Said yes', reviewRating: 3.75 });
+    });
+
+    it('an ordinary chat reply leaves the draft alone', async () => {
+        const bridge = new FakeBridge([result('Q1?'), result('Q2?')]);
+        const { service, discussion } = await startedDiscussion(bridge);
+
+        await service.reply(discussion.id, 'An answer', noop);
+
+        expect(DiscussionQueries.get(discussion.id)).toMatchObject({ status: 'active', reviewDraft: null });
+    });
+
     it('apply copies the draft and rating to the book and stamps applied_at', async () => {
         const { book, service, discussion } = await startedDiscussion(new FakeBridge([result('Q1?')]));
         service.saveDraft(discussion.id, 'My edited review', 4.75);

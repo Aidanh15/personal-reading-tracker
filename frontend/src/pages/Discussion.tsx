@@ -13,6 +13,9 @@ const KICKOFF = 'Start the discussion.';
 
 type PendingTurn = 'start' | 'reply' | 'review';
 
+// Claude's reply is a tagged review (one it wrote in the chat after the reader said yes)
+const isTaggedReview = (text: string) => text.includes('<review>');
+
 function Discussion() {
   const { id, discussionId } = useParams<{ id: string; discussionId: string }>();
   const bookId = Number(id);
@@ -43,6 +46,8 @@ function Discussion() {
 
   const started = useRef(false);
   const bottom = useRef<HTMLDivElement>(null);
+  const reviewPanel = useRef<HTMLDivElement>(null);
+  const showReview = useRef(false);
   const currentId = useRef<number | null>(null);
 
   const load = useCallback(async (idToLoad: number) => {
@@ -58,9 +63,15 @@ function Discussion() {
     setRating(discussion?.reviewRating ?? null);
   }, [discussion?.reviewDraft, discussion?.reviewRating]);
 
+  // Follow the chat, or bring a newly written review into view
   useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages.length, streamed, status, sentText]);
+    if (showReview.current && reviewPanel.current) {
+      showReview.current = false;
+      reviewPanel.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    if (!showReview.current) bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages.length, streamed, status, sentText, discussion?.reviewDraft]);
 
   const handleEvent = (turn: PendingTurn, instructions?: string) => (event: StreamEvent) => {
     switch (event.type) {
@@ -77,6 +88,9 @@ function Discussion() {
         setStreamed(previous => previous + event.text);
         break;
       case 'done':
+        if (event.discussion.reviewDraft !== null && event.discussion.reviewDraft !== discussion?.reviewDraft) {
+          showReview.current = true;
+        }
         setDiscussion(event.discussion);
         void load(event.discussion.id);
         break;
@@ -216,7 +230,7 @@ function Discussion() {
 
       <div className="card flex flex-col gap-4">
         {visible.map(message => {
-          if (message.kind === 'review') {
+          if (message.kind === 'review' || (message.role === 'assistant' && isTaggedReview(message.content))) {
             return (
               <p key={message.id} className="text-center font-mono text-[11px] uppercase tracking-[0.12em] text-ink-400">
                 {message.role === 'user' ? 'Asked Claude for the review' : 'Review drafted below'}
@@ -245,7 +259,7 @@ function Discussion() {
           </div>
         )}
 
-        {busy && streamed && turnKind !== 'review' && (
+        {busy && streamed && turnKind !== 'review' && !isTaggedReview(streamed) && (
           <div className="flex justify-start">
             <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl border border-ink-900/10 bg-paper-100 px-4 py-3 text-[15px] leading-relaxed text-ink-900">
               {streamed}
@@ -253,6 +267,7 @@ function Discussion() {
           </div>
         )}
 
+        {busy && !status && isTaggedReview(streamed) && <p className="animate-pulse text-sm italic text-ink-500">Writing your review…</p>}
         {busy && status && <p className="animate-pulse text-sm italic text-ink-500">{status}</p>}
         {busy && !status && !streamed && <p className="animate-pulse text-sm italic text-ink-500">Claude is thinking…</p>}
 
@@ -296,7 +311,7 @@ function Discussion() {
       </div>
 
       {discussion?.reviewDraft !== null && discussion?.reviewDraft !== undefined && (
-        <div className="card flex flex-col gap-4">
+        <div ref={reviewPanel} className="card flex flex-col gap-4 scroll-mt-4">
           <div>
             <p className="eyebrow">Your review</p>
             <p className="mt-1 text-sm text-gray-600">Edit freely; nothing changes on the book until you save it as your review.</p>
