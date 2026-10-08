@@ -98,9 +98,12 @@ export function syncClippingsFolder(directory = getClippingsSyncDirectory()): Cl
     return (lastResult = result);
 }
 
-/** Runs the sync shortly after startup and then on an interval (CLIPPINGS_SYNC_MINUTES, default 30; 0 disables). */
+/**
+ * Runs the sync shortly after startup and then once a day (CLIPPINGS_SYNC_MINUTES, default 1440; 0 disables).
+ * Highlights reach clippings.io roughly weekly (its import only works on desktop), so daily is plenty.
+ */
 export function startClippingsSync(): void {
-    const minutes = Number(process.env['CLIPPINGS_SYNC_MINUTES'] ?? 30);
+    const minutes = Number(process.env['CLIPPINGS_SYNC_MINUTES'] ?? 1440);
     if (!Number.isFinite(minutes) || minutes <= 0) {
         console.log('Clippings sync disabled');
         return;
