@@ -198,3 +198,28 @@ export interface SearchFilters {
   limit?: number;
   offset?: number;
 }
+
+// Discuss with Claude
+export type DiscussionStatus = 'active' | 'reviewed';
+
+export interface Discussion {
+  id: number;
+  bookId: number;
+  claudeSessionId: string;
+  status: DiscussionStatus;
+  model: string | null;
+  reviewDraft: string | null;
+  reviewRating: number | null;
+  appliedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DiscussionMessage {
+  id: number;
+  discussionId: number;
+  role: 'user' | 'assistant';
+  kind: 'chat' | 'review';
+  content: string;
+  createdAt: string;
+}
