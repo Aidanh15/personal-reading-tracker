@@ -11,6 +11,7 @@ import LoadingSpinner from '../components/UI/LoadingSpinner';
 import HighlightManager from '../components/UI/HighlightManager';
 import BookCover from '../components/BookCover';
 import StarRating from '../components/UI/StarRating';
+import BookDiscussions from '../components/Discussions/BookDiscussions';
 
 function BookDetail() {
   const { id } = useParams<{ id: string }>();
@@ -146,6 +147,8 @@ function BookDetail() {
               </div>
             </div>
           </div>
+
+          {book.status === 'completed' && <BookDiscussions book={book} />}
 
           {/* Highlights Section */}
           <div className="card">
