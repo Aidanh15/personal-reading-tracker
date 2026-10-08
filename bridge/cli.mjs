@@ -5,9 +5,10 @@ const TOOLS = 'WebSearch,WebFetch';
 /**
  * Arguments for one discussion turn. The reader's message is written to stdin,
  * never passed here. The system prompt is sent on every turn because the CLI
- * does not keep it with the session.
+ * does not keep it with the session; the server passes it as a file, since
+ * Linux caps a single argument at 128 KiB and a replayed transcript can be long.
  */
-export function buildArgs({ sessionId, resume, systemPrompt, model }) {
+export function buildArgs({ sessionId, resume, systemPrompt, systemPromptFile, model }) {
     return [
         '-p',
         resume ? '--resume' : '--session-id', sessionId,
@@ -18,7 +19,7 @@ export function buildArgs({ sessionId, resume, systemPrompt, model }) {
         '--allowedTools', TOOLS,
         '--strict-mcp-config',
         '--setting-sources', '',
-        '--system-prompt', systemPrompt,
+        ...(systemPromptFile ? ['--system-prompt-file', systemPromptFile] : ['--system-prompt', systemPrompt]),
         '--model', model
     ];
 }

@@ -4,7 +4,7 @@ import { validateBody, validateParams } from '../middleware/validation';
 import { createError } from '../middleware/errorHandler';
 import { createBridgeClient } from '../services/claudeBridge';
 import { createDiscussionService, DiscussionError, Emit } from '../services/discussions';
-import { draftBodySchema, idParamSchema, messageBodySchema, reviewBodySchema } from './discussionSchemas';
+import { applyBodySchema, draftBodySchema, idParamSchema, messageBodySchema, reviewBodySchema } from './discussionSchemas';
 
 const bridge = createBridgeClient();
 const service = createDiscussionService(bridge, process.env['CLAUDE_BRIDGE_MODEL'] ?? null);
@@ -85,8 +85,8 @@ discussionsRouter.put('/:id/review', validateParams(idParamSchema), validateBody
   res.json({ discussion: service.saveDraft(id(req), req.body.draft, req.body.rating) });
 }));
 
-discussionsRouter.post('/:id/apply', validateParams(idParamSchema), plain((req, res) => {
-  res.json({ discussion: service.apply(id(req)) });
+discussionsRouter.post('/:id/apply', validateParams(idParamSchema), validateBody(applyBodySchema), plain((req, res) => {
+  res.json({ discussion: service.apply(id(req), req.body.confirm === true) });
 }));
 
 discussionsRouter.delete('/:id', validateParams(idParamSchema), plain((req, res) => {

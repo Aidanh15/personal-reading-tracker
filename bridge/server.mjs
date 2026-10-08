@@ -8,10 +8,10 @@
 //   GET  /health → {ok, claudeVersion}
 import { createServer } from 'node:http';
 import { spawn, execFile } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { timingSafeEqual } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { buildArgs, isSessionNotFound } from './cli.mjs';
 
 const TOKEN = process.env.CLAUDE_BRIDGE_TOKEN;
@@ -75,7 +75,9 @@ function runTurn(turn, res) {
     busy = true;
     res.writeHead(200, { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-cache' });
 
-    const child = spawn(CLAUDE_BIN, buildArgs({ ...turn, model: MODEL }), {
+    const promptFile = join(WORK_DIR, `prompt-${randomUUID()}.txt`);
+    writeFileSync(promptFile, turn.systemPrompt, 'utf-8');
+    const child = spawn(CLAUDE_BIN, buildArgs({ ...turn, systemPromptFile: promptFile, model: MODEL }), {
         cwd: WORK_DIR,
         stdio: ['pipe', 'pipe', 'pipe']
     });
@@ -89,6 +91,7 @@ function runTurn(turn, res) {
         finished = true;
         busy = false;
         clearTimeout(timer);
+        rmSync(promptFile, { force: true });
         if (!res.writableEnded) res.end(`${JSON.stringify(line)}\n`);
     };
 

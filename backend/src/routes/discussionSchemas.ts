@@ -18,3 +18,7 @@ export const draftBodySchema = z.object({
   draft: z.string().max(10000),
   rating: ratingSchema.nullable()
 });
+
+export const applyBodySchema = z.object({
+  confirm: z.boolean().optional()
+});

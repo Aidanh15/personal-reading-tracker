@@ -106,8 +106,9 @@ export const discussionsApi = {
     return response.data.discussion;
   },
 
-  async apply(id: number): Promise<Discussion> {
-    const response: AxiosResponse<{ discussion: Discussion }> = await api.post(`/discussions/${id}/apply`);
+  /** Rejects with status 409 when the book has a different review, unless confirm is true. */
+  async apply(id: number, confirm = false): Promise<Discussion> {
+    const response: AxiosResponse<{ discussion: Discussion }> = await api.post(`/discussions/${id}/apply`, { confirm });
     return response.data.discussion;
   },
 

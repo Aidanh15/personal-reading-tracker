@@ -71,32 +71,42 @@ export function createDiscussionService(bridge: BridgeClient, model: string | nu
 
         try {
             let pending: DiscussionMessage;
+            // Answers saved after Claude's last reply that it never received (a
+            // failed turn the reader didn't retry): send them along so Claude sees them.
+            const unanswered: string[] = [];
+            for (const message of [...DiscussionQueries.messages(discussionId)].reverse()) {
+                if (message.role !== 'user') break;
+                if (message.kind === 'chat') unanswered.unshift(message.content);
+            }
             if (content === null) {
                 const last = DiscussionQueries.lastMessage(discussionId);
                 if (!last || last.role !== 'user') throw new DiscussionError(400, 'Nothing to retry');
                 pending = last;
+                // the retried message itself is sent as `pending`
+                if (last.kind === 'chat') unanswered.pop();
             } else {
                 pending = DiscussionQueries.addMessage(discussionId, 'user', kind, content);
             }
 
+            const outgoing = [...unanswered, pending.content].join('\n\n');
             let outcome = await call({
                 sessionId: discussion.claudeSessionId,
                 resume,
                 systemPrompt: systemPrompt(discussion),
-                message: pending.content
+                message: outgoing
             }, emit);
 
             if (outcome.error?.code === 'session_not_found') {
                 emit({ type: 'status', text: 'Reconnecting to the discussion…' });
                 const transcript = DiscussionQueries.messages(discussionId)
-                    .filter(message => message.id !== pending.id)
+                    .filter(message => message.id !== pending.id && !(message.role === 'user' && unanswered.includes(message.content)))
                     .map(message => ({ role: message.role, content: message.content }));
                 const sessionId = randomUUID();
                 outcome = await call({
                     sessionId,
                     resume: false,
                     systemPrompt: systemPrompt(discussion, transcript),
-                    message: pending.content
+                    message: outgoing
                 }, emit);
                 if (outcome.text !== null) DiscussionQueries.setSessionId(discussionId, sessionId);
             }
@@ -142,9 +152,14 @@ export function createDiscussionService(bridge: BridgeClient, model: string | nu
             return DiscussionQueries.saveReview(discussionId, draft, rating);
         },
 
-        apply(discussionId: number): Discussion {
+        /** Copies the draft to the book. A different existing review is only replaced with confirmReplace. */
+        apply(discussionId: number, confirmReplace = false): Discussion {
             const discussion = load(discussionId);
             if (discussion.reviewDraft === null) throw new DiscussionError(400, 'There is no review draft yet');
+            const current = BookQueries.getBookById(discussion.bookId)?.personalReview?.trim();
+            if (current && current !== discussion.reviewDraft.trim() && !confirmReplace) {
+                throw new DiscussionError(409, 'This book already has a different review');
+            }
             BookQueries.updateBook(discussion.bookId, {
                 personalReview: discussion.reviewDraft,
                 ...(discussion.reviewRating !== null && { personalRating: discussion.reviewRating })

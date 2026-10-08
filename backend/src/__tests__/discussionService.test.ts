@@ -181,6 +181,51 @@ describe('discussion service', () => {
         expect(() => service.apply(discussion.id)).toThrow(DiscussionError);
     });
 
+    it('sends an earlier unanswered answer along with a new one, so Claude sees both', async () => {
+        const bridge = new FakeBridge([
+            result('Q1?'),
+            [{ type: 'error', code: 'unreachable', message: 'down' }],
+            result('Q2?')
+        ]);
+        const { service, discussion } = await startedDiscussion(bridge);
+
+        await service.reply(discussion.id, 'First answer', noop);
+        await service.reply(discussion.id, 'Second thought', noop);
+
+        expect(bridge.requests[2]!.message).toContain('First answer');
+        expect(bridge.requests[2]!.message).toContain('Second thought');
+        expect(DiscussionQueries.messages(discussion.id).map(m => m.content))
+            .toEqual(['Start the discussion.', 'Q1?', 'First answer', 'Second thought', 'Q2?']);
+    });
+
+    it('a retry also resends earlier unanswered answers', async () => {
+        const bridge = new FakeBridge([
+            result('Q1?'),
+            [{ type: 'error', code: 'unreachable', message: 'down' }],
+            [{ type: 'error', code: 'unreachable', message: 'down' }],
+            result('Q2?')
+        ]);
+        const { service, discussion } = await startedDiscussion(bridge);
+
+        await service.reply(discussion.id, 'First answer', noop);
+        await service.reply(discussion.id, 'Second thought', noop);
+        await service.reply(discussion.id, null, noop);
+
+        expect(bridge.requests[3]!.message).toBe('First answer\n\nSecond thought');
+    });
+
+    it("apply will not replace a different existing review without confirmation", async () => {
+        const { book, service, discussion } = await startedDiscussion(new FakeBridge([result('Q1?')]));
+        BookQueries.updateBook(book.id, { personalReview: 'My hand-written review' });
+        service.saveDraft(discussion.id, 'Claude draft', 4.5);
+
+        expect(() => service.apply(discussion.id)).toThrow(expect.objectContaining({ status: 409 }));
+        expect(BookQueries.getBookById(book.id)!.personalReview).toBe('My hand-written review');
+
+        service.apply(discussion.id, true);
+        expect(BookQueries.getBookById(book.id)!.personalReview).toBe('Claude draft');
+    });
+
     it('unknown discussions are 404', async () => {
         const service = createDiscussionService(new FakeBridge([]), null);
         await expect(service.reply(999999, 'x', noop)).rejects.toMatchObject({ status: 404 });

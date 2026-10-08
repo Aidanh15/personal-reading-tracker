@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeftIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 import { Discussion as DiscussionRecord, DiscussionMessage } from '../types';
 import { discussionsApi, StreamEvent } from '../services/discussionsApi';
+import { ApiRequestError } from '../services/api';
 import { useBooks } from '../contexts/BooksContext';
 import { useNotification } from '../contexts/NotificationContext';
 import StarRating from '../components/UI/StarRating';
@@ -19,6 +20,12 @@ function Discussion() {
   const { getBookById, fetchBooks } = useBooks();
   const { showSuccess, showError } = useNotification();
   const book = getBookById(bookId);
+
+  // Opened directly or reloaded: the library may not be loaded yet
+  useEffect(() => {
+    if (!book) void fetchBooks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookId]);
 
   const [discussion, setDiscussion] = useState<DiscussionRecord | null>(null);
   const [messages, setMessages] = useState<DiscussionMessage[]>([]);
@@ -121,17 +128,16 @@ function Discussion() {
     void runTurn('reply', onEvent => discussionsApi.reply(id_(), content, onEvent));
   };
 
+  // Resends the reader's unanswered message (a review request stays a review request)
   const retry = () => {
-    if (!error) return;
-    const failed = error;
-    if (failed.turn === 'review') {
-      void runTurn('review', onEvent => discussionsApi.writeReview(id_(), failed.instructions, onEvent), failed.instructions);
-    } else if (currentId.current === null) {
+    if (currentId.current === null) {
       started.current = false;
       void runTurn('start', onEvent => discussionsApi.start(bookId, onEvent));
-    } else {
-      void runTurn(failed.turn, onEvent => discussionsApi.reply(id_(), null, onEvent));
+      return;
     }
+    const last = messages[messages.length - 1];
+    const turn: PendingTurn = last?.kind === 'review' ? 'review' : 'reply';
+    void runTurn(turn, onEvent => discussionsApi.reply(id_(), null, onEvent));
   };
 
   const writeReview = (instructions?: string) => {
@@ -150,24 +156,21 @@ function Discussion() {
     }
   };
 
-  const apply = async () => {
+  // The server refuses (409) to replace a different existing review unless confirmed
+  const apply = async (confirm = false) => {
     if (!discussion) return;
     setConfirmReplace(false);
     try {
       await discussionsApi.saveDraft(discussion.id, draft, rating);
-      setDiscussion(await discussionsApi.apply(discussion.id));
+      setDiscussion(await discussionsApi.apply(discussion.id, confirm));
       await fetchBooks();
       showSuccess('Saved as your review');
     } catch (err) {
+      if (err instanceof ApiRequestError && err.status === 409) {
+        setConfirmReplace(true);
+        return;
+      }
       showError('Could not save your review', err instanceof Error ? err.message : undefined);
-    }
-  };
-
-  const requestApply = () => {
-    if (book?.personalReview && book.personalReview.trim() && book.personalReview.trim() !== draft.trim()) {
-      setConfirmReplace(true);
-    } else {
-      void apply();
     }
   };
 
@@ -180,6 +183,8 @@ function Discussion() {
   };
 
   const visible = messages.filter((message, index) => !(index === 0 && message.role === 'user' && message.content === KICKOFF));
+  // Last saved message is the reader's with no reply (a turn failed, maybe while the page was closed)
+  const unanswered = !busy && !error && messages.length > 0 && messages[messages.length - 1]!.role === 'user';
   const answered = messages.some(message => message.role === 'user' && message.kind === 'chat' && message.content !== KICKOFF);
 
   return (
@@ -251,6 +256,13 @@ function Discussion() {
         {busy && status && <p className="animate-pulse text-sm italic text-ink-500">{status}</p>}
         {busy && !status && !streamed && <p className="animate-pulse text-sm italic text-ink-500">Claude is thinking…</p>}
 
+        {unanswered && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-copper-300/60 bg-copper-500/5 px-4 py-3 text-sm text-ink-700">
+            <span>Claude hasn't replied to this yet.</span>
+            <button type="button" className="btn-secondary" onClick={retry}>Send again</button>
+          </div>
+        )}
+
         {error && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             <span>{error.message}</span>
@@ -316,7 +328,7 @@ function Discussion() {
           </div>
           <div className="flex flex-wrap justify-end gap-2">
             <button type="button" className="btn-secondary" onClick={saveDraft} disabled={busy}>Save draft</button>
-            <button type="button" className="btn-primary" onClick={requestApply} disabled={busy || !draft.trim()}>
+            <button type="button" className="btn-primary" onClick={() => void apply()} disabled={busy || !draft.trim()}>
               {discussion.appliedAt ? 'Save as my review again' : 'Save as my review'}
             </button>
           </div>
@@ -327,7 +339,7 @@ function Discussion() {
         <p className="text-sm text-gray-700">This book already has a review. Saving replaces it (and the rating, if this draft has one).</p>
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" className="btn-secondary" onClick={() => setConfirmReplace(false)}>Cancel</button>
-          <button type="button" className="btn-primary" onClick={() => void apply()}>Replace</button>
+          <button type="button" className="btn-primary" onClick={() => void apply(true)}>Replace</button>
         </div>
       </Sheet>
     </div>

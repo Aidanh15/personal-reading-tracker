@@ -43,3 +43,9 @@ test('isSessionNotFound', () => {
     assert.equal(isSessionNotFound(`No conversation found with session ID: ${ID}`), true);
     assert.equal(isSessionNotFound('Error: rate limited'), false);
 });
+
+test('buildArgs passes the system prompt as a file when given one (argv caps a single argument at 128 KiB)', () => {
+    const args = buildArgs({ sessionId: ID, resume: false, systemPromptFile: '/tmp/prompt.txt', model: 'opus' });
+    assert.equal(flagValue(args, '--system-prompt-file'), '/tmp/prompt.txt');
+    assert.ok(!args.includes('--system-prompt'));
+});
