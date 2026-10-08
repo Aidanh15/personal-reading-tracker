@@ -29,17 +29,18 @@ browser ──SSE──▶ backend container ──HTTP (NDJSON)──▶ claude
 
 ### 1. claude-bridge (host service)
 
-- `bridge/server.ts` in the repo, run by the host's Node 18 with no dependencies beyond Node built-ins (`http`, `child_process`). The `claude-bridge.service` systemd unit (source in `scripts/systemd/`, installed to `/etc/systemd/system/`) runs it as user `pi` with `Restart=on-failure`.
+- `bridge/server.mjs` in the repo: plain JavaScript (ES modules), run directly by the host's Node 18, which can't run TypeScript without a build step. It has no dependencies beyond Node built-ins (`http`, `child_process`). The `claude-bridge.service` systemd unit (source in `scripts/systemd/`, installed to `/etc/systemd/system/`) runs it as user `pi` with `Restart=on-failure`.
 - Listens on `172.17.0.1:3010` only (the Docker bridge gateway, which the app container can reach; the tailnet and LAN can't). Each request must carry `Authorization: Bearer $CLAUDE_BRIDGE_TOKEN`. The token is in `.env.ssd` for the app and in `.env.bridge` (gitignored) for the bridge, alongside `CLAUDE_BRIDGE_MODEL` (default `opus`).
-- `POST /turn` with body `{ sessionId: uuid, resume: boolean, systemPrompt?: string, message: string }` spawns:
+- `POST /turn` with body `{ sessionId: uuid, resume: boolean, systemPrompt: string, message: string }` spawns:
   ```
   claude -p (--session-id <uuid> | --resume <uuid>)
          --output-format stream-json --include-partial-messages --verbose
-         --tools WebSearch,WebFetch --strict-mcp-config --setting-sources ""
-         [--system-prompt <systemPrompt>]   (first turn only)
+         --tools WebSearch,WebFetch --allowedTools WebSearch,WebFetch
+         --strict-mcp-config --setting-sources ""
+         --system-prompt <systemPrompt>     (every turn: the CLI doesn't persist it with the session)
          --model $CLAUDE_BRIDGE_MODEL
   ```
-  The message goes in on stdin, never in argv. The working directory is an empty `~/.local/share/claude-bridge/`. The CLI's stream-json lines are relayed as NDJSON.
+  The message goes in on stdin, never in argv. The working directory is an empty `~/.local/share/claude-bridge/`. The CLI's stream-json lines are relayed as NDJSON. (Verified on the Pi: `--tools` alone makes the tools available, but `-p` mode denies them unless `--allowedTools` also lists them; resumed sessions keep context; Bash isn't available.)
 - `--setting-sources ""` and `--strict-mcp-config` keep the user's plugins, hooks, MCP servers and CLAUDE.md out of discussion sessions.
 - Only one turn runs at a time; a concurrent request gets `409 busy`. Each turn has a 5-minute timeout (the child is killed and an error event is sent). If the backend's connection drops, the child is killed. A browser disconnect doesn't drop it: the backend stays connected to the bridge, finishes reading the turn and saves it (see section 2).
 - `GET /health` (no token needed) returns `{ ok, claudeVersion }`.
@@ -117,13 +118,13 @@ The reader sees one extra status line ("Reconnecting to the discussion…") and 
 
 ### 4. Prompts
 
-**System prompt** (first turn), built in the backend:
+**System prompt** (sent on every turn), rebuilt by the backend from the database each time:
 - The book's title, authors, start and finish dates, and existing rating, if any.
 - All highlights with their notes. The largest book has about 70.
 - Voice examples: up to two of the reader's most recent saved `personal_review`s from other books, plus a style guide: opinionated, conversational, argument-led rather than summary, humour welcome, a short verdict up front, the score at the end.
 - Interview rules:
   - Research first: use existing knowledge, and use web search for lesser-known books or where specifics help (reception, author context, translations). Don't narrate the research.
-  - Ask one question per message. Keep replies to a few sentences plus the next question. Use plain prose, no Markdown.
+  - Ask one question per message. Keep replies to a few sentences plus the next question. Use plain prose: no Markdown and no source lists.
   - Make questions specific: name scenes, characters, arguments and turning points, and use the reader's highlights as openings.
   - Follow up on interesting answers. Push back and steelman the author when the reader criticises; don't flatter.
   - Cover the reader's overall reaction, characters, ideas, the writing, what didn't work and a verdict, and ask for a score near the end.
