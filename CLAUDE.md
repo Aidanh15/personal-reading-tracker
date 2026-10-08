@@ -62,7 +62,7 @@ On a completed book, "Discuss with Claude" opens a chat (`/books/:id/discuss/:di
 
 Changes committed but not yet live (clear this list after each `scripts/redeploy.sh`):
 
-- Discuss with Claude + quarter-star ratings. The first start rebuilds the `books` table once to change the rating constraint; the redeploy backup covers it.
+- (none)
 
 ## Backlog (ideas, not started)
 
