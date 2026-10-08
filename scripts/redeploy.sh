@@ -25,16 +25,36 @@ echo "==> Backing up database"
 STAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP_DIR="backups/pre-deploy-${STAMP}"
 mkdir -p "$BACKUP_DIR"
+
+# From here until the new container is running, any failure restarts the old one
+# so the site is never left down.
+STOPPED_OLD=0
+RENAMED=0
+SWAPPED=0
+on_error() {
+  [ "$STOPPED_OLD" = 1 ] && [ "$SWAPPED" = 0 ] || return 0
+  echo "!! Deploy failed before the swap; restarting the previous container" >&2
+  if [ "$RENAMED" = 1 ]; then
+    docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+    docker rename "${CONTAINER}-prev" "$CONTAINER" || true
+  fi
+  docker start "$CONTAINER" >/dev/null || true
+}
+trap on_error ERR
+
 if docker ps -q -f "name=^${CONTAINER}$" | grep -q .; then
   docker stop "$CONTAINER" >/dev/null
+  STOPPED_OLD=1
 fi
-cp -p data/reading-tracker.db* "$BACKUP_DIR"/
+# No -p: the SSD is NTFS and refuses permission changes
+cp data/reading-tracker.db* "$BACKUP_DIR"/
 echo "    saved to ${BACKUP_DIR}"
 
 echo "==> Swapping container"
 docker rm -f "${CONTAINER}-prev" >/dev/null 2>&1 || true
 if docker ps -aq -f "name=^${CONTAINER}$" | grep -q .; then
   docker rename "$CONTAINER" "${CONTAINER}-prev"
+  RENAMED=1
 fi
 
 docker run -d --name "$CONTAINER" \
@@ -55,6 +75,8 @@ docker run -d --name "$CONTAINER" \
   -v reading_tracker_tmp:/app/tmp \
   --tmpfs /tmp:noexec,nosuid,size=100m \
   "$TAG" >/dev/null
+SWAPPED=1
+trap - ERR
 
 echo "==> Waiting for health check at ${HEALTH_URL}"
 for _ in $(seq 1 30); do
