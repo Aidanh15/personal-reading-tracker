@@ -105,6 +105,15 @@ export class DiscussionQueries {
     return this.get(id)!;
   }
 
+  /** The reader's most recent saved reviews of other books, as examples of their voice. */
+  static voiceExamples(excludeBookId: number, limit = 2): string[] {
+    return (db.prepare(`
+      SELECT personal_review AS review FROM books
+      WHERE id != ? AND personal_review IS NOT NULL AND trim(personal_review) != ''
+      ORDER BY updated_at DESC, id DESC LIMIT ?
+    `).all(excludeBookId, limit) as { review: string }[]).map(row => row.review);
+  }
+
   static delete(id: number): boolean {
     return db.prepare('DELETE FROM discussions WHERE id = ?').run(id).changes > 0;
   }
