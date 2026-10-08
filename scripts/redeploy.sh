@@ -1,7 +1,7 @@
 #!/bin/bash
 # Rebuild and redeploy the live reading tracker at http://100.125.191.12:3004
 #
-# Builds the current working tree into an image, backs up the SQLite DB,
+# Builds the current working tree into an image (or uses IMAGE=<tag>), backs up the SQLite DB,
 # swaps the container, health-checks it, and rolls back if it fails.
 # The previous container is kept (stopped) as "<name>-prev" until the next deploy.
 set -euo pipefail
@@ -14,12 +14,19 @@ HEALTH_URL="http://${HOST_BIND}:${HOST_PORT}/api/health"
 
 cd "$PROJECT_DIR"
 
-SHA=$(git rev-parse --short HEAD)
-DIRTY=$(git status --porcelain --untracked-files=no | grep -q . && echo "-dirty" || true)
-TAG="personal-reading-tracker:${SHA}${DIRTY}"
+if [ -n "${IMAGE:-}" ]; then
+  # Promote an image that's already built (e.g. one tried out with scripts/preview.sh)
+  TAG="$IMAGE"
+  docker image inspect "$TAG" >/dev/null || { echo "Image $TAG not found" >&2; exit 1; }
+  echo "==> Using existing image ${TAG}"
+else
+  SHA=$(git rev-parse --short HEAD)
+  DIRTY=$(git status --porcelain --untracked-files=no | grep -q . && echo "-dirty" || true)
+  TAG="personal-reading-tracker:${SHA}${DIRTY}"
 
-echo "==> Building ${TAG}"
-docker build -t "$TAG" .
+  echo "==> Building ${TAG}"
+  docker build -t "$TAG" .
+fi
 
 echo "==> Backing up database"
 STAMP=$(date +%Y%m%d-%H%M%S)

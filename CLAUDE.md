@@ -20,7 +20,18 @@ Personal reading dashboard: reading plan, progress tracking, Kindle highlights, 
 
 The script builds the working tree into an image tagged `personal-reading-tracker:<sha>[-dirty]`, then copies `data/reading-tracker.db*` to `backups/pre-deploy-<timestamp>/`. It replaces the container, keeping the old one as `reading-tracker-ui-test-prev`. Finally it polls `/api/health` and rolls back automatically if the check fails. Building on the Pi takes ~10 minutes, so batch enhancements and deploy them together (see Pending deploy below).
 
-On startup, `scripts/docker-entrypoint.sh` seeds the DB only if it is empty, then runs `sync-reading-plan`. That sync reconciles the numbered master list without resetting progress.
+**Preview first, then promote** (one build per batch):
+
+```bash
+docker build -t personal-reading-tracker:$(git rev-parse --short HEAD) .
+./scripts/preview.sh start personal-reading-tracker:<sha>   # http://100.125.191.12:3005 on a snapshot of the live library
+./scripts/preview.sh stop
+IMAGE=personal-reading-tracker:<sha> ./scripts/redeploy.sh   # promote the same image, no rebuild
+```
+
+The preview's copy of the data lives in `preview-data/` (gitignored) and is re-snapshotted on each `start`, unless `--keep-data` is given. Clippings sync is disabled in the preview.
+
+On startup, `scripts/docker-entrypoint.sh` seeds the DB only if it is empty. (The old `sync-reading-plan` step was retired in Oct 2026; the reading list is edited in the app.)
 
 ## Gotchas
 
