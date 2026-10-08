@@ -2,6 +2,10 @@ import { Request, Response, NextFunction } from 'express';
 import { z, ZodSchema, ZodError } from 'zod';
 import { createError } from './errorHandler';
 
+/** Book ratings: 1-5 in quarter stars (4.25). */
+export const ratingSchema = z.number().min(1).max(5)
+  .refine(rating => Number.isInteger(rating * 4), 'Rating must be in steps of 0.25');
+
 // Validation schemas for API requests
 export const schemas = {
   // Book schemas
@@ -21,8 +25,8 @@ export const schemas = {
     status: z.enum(['not_started', 'in_progress', 'completed', 'did_not_finish']).optional(),
     startedDate: z.string().datetime().optional(),
     completedDate: z.string().datetime().optional(),
-    personalRating: z.number().int().min(1).max(5).optional(),
-    personalReview: z.string().max(5000).optional()
+    personalRating: ratingSchema.optional(),
+    personalReview: z.string().max(10000).optional()
   }),
 
   updateBookStatus: z.object({

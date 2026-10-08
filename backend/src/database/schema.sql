@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS books (
     current_page INTEGER DEFAULT 0 CHECK (current_page >= 0),
     started_date TEXT, -- ISO date string
     completed_date TEXT, -- ISO date string
-    personal_rating INTEGER CHECK (personal_rating >= 1 AND personal_rating <= 5),
+    personal_rating REAL CHECK (personal_rating >= 1 AND personal_rating <= 5 AND personal_rating * 4 = CAST(personal_rating * 4 AS INTEGER)), -- 1-5 in quarter stars
     personal_review TEXT,
     cover_image_url TEXT,
     phase TEXT, -- Reading-list section heading, e.g. "Phase 4 — The American Experiment"

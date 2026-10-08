@@ -419,3 +419,89 @@ describe('did-not-finish schema upgrade', () => {
         }
     });
 });
+
+describe('quarter-star rating upgrade', () => {
+    const OLD_RATING = 'personal_rating INTEGER CHECK (personal_rating >= 1 AND personal_rating <= 5),';
+
+    function openWithConnection<T>(path: string, fn: (upgraded: Database.Database) => T): T {
+        const originalPath = process.env['DATABASE_PATH'];
+        process.env['DATABASE_PATH'] = path;
+        try {
+            let result: T | undefined;
+            jest.isolateModules(() => {
+                const { db: upgraded } = require('../database/connection');
+                try {
+                    result = fn(upgraded);
+                } finally {
+                    upgraded.close();
+                }
+            });
+            return result as T;
+        } finally {
+            process.env['DATABASE_PATH'] = originalPath;
+        }
+    }
+
+    function buildIntegerRatingDb(path: string): unknown[] {
+        const schema = readFileSync(join(__dirname, '../database/schema.sql'), 'utf-8')
+            .replace(/personal_rating [^\n]*,/, OLD_RATING);
+        expect(schema).toContain(OLD_RATING);
+
+        const old = new Database(path);
+        old.exec(schema);
+        old.prepare(`
+            INSERT INTO books (id, title, authors, position, status, progress_percentage, current_page, total_pages,
+                               started_date, completed_date, personal_rating, personal_review, cover_image_url,
+                               phase, milestone, category, parallel_track, unscheduled)
+            VALUES (1, 'Invisible Cities', '["Italo Calvino"]', 2, 'completed', 100, 165, 165,
+                    '2026-03-01T08:00:00.000Z', '2026-03-20T08:00:00.000Z', 4, 'Great.', '/covers/x.jpg',
+                    'Phase 1', 'Peak', 'F', 1, 0),
+                   (2, 'Dead Souls', '["Nikolai Gogol"]', 1, 'in_progress', 37, 120, 400,
+                    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 1)
+        `).run();
+        old.prepare(`
+            INSERT INTO highlights (id, book_id, quote_text, personal_notes)
+            VALUES (1, 1, 'A highlight that must survive the upgrade.', 'note')
+        `).run();
+        old.prepare('INSERT INTO highlight_reviews (highlight_id, review_count, favorite) VALUES (1, 3, 1)').run();
+        const rows = old.prepare('SELECT * FROM books ORDER BY id').all();
+        old.close();
+        return rows;
+    }
+
+    it('upgrades an integer-rating database keeping every book column, highlight and review state', () => {
+        const path = join(workDir, 'integer-rating.db');
+        const rowsBefore = buildIntegerRatingDb(path);
+
+        openWithConnection(path, upgraded => {
+            expect(upgraded.prepare('SELECT * FROM books ORDER BY id').all()).toEqual(rowsBefore);
+
+            upgraded.prepare('UPDATE books SET personal_rating = 4.25 WHERE id = 1').run();
+            expect(upgraded.prepare('SELECT personal_rating FROM books WHERE id = 1').get()).toEqual({ personal_rating: 4.25 });
+            expect(() => upgraded.prepare('UPDATE books SET personal_rating = 4.3 WHERE id = 1').run()).toThrow(/CHECK/);
+            expect(() => upgraded.prepare('UPDATE books SET personal_rating = 5.25 WHERE id = 1').run()).toThrow(/CHECK/);
+
+            expect(upgraded.prepare('SELECT book_id, quote_text, personal_notes FROM highlights').all())
+                .toEqual([{ book_id: 1, quote_text: 'A highlight that must survive the upgrade.', personal_notes: 'note' }]);
+            expect(upgraded.prepare('SELECT highlight_id, review_count, favorite FROM highlight_reviews').all())
+                .toEqual([{ highlight_id: 1, review_count: 3, favorite: 1 }]);
+            expect(upgraded.prepare("SELECT count(*) AS n FROM sqlite_master WHERE tbl_name = 'books' AND type IN ('index','trigger')").get())
+                .toEqual({ n: 4 });
+        });
+    });
+
+    it('is a no-op on an already upgraded database', () => {
+        const path = join(workDir, 'integer-rating-twice.db');
+        buildIntegerRatingDb(path);
+        const first = openWithConnection(path, upgraded => ({
+            sql: (upgraded.prepare("SELECT sql FROM sqlite_master WHERE name = 'books'").get() as { sql: string }).sql,
+            rows: upgraded.prepare('SELECT * FROM books ORDER BY id').all()
+        }));
+        const second = openWithConnection(path, upgraded => ({
+            sql: (upgraded.prepare("SELECT sql FROM sqlite_master WHERE name = 'books'").get() as { sql: string }).sql,
+            rows: upgraded.prepare('SELECT * FROM books ORDER BY id').all()
+        }));
+        expect(first.sql).toContain('personal_rating REAL');
+        expect(second).toEqual(first);
+    });
+});
