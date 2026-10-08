@@ -62,7 +62,14 @@ discussion_messages (
 )
 ```
 
-The transcript lives in the app database, so it doesn't depend on Claude's session files surviving. If `--resume` fails because the session is gone, the turn errors and the UI offers to start a new discussion. Transcript replay is out of scope.
+The transcript lives in the app database, so it doesn't depend on Claude's session files surviving.
+
+**Session recovery (transcript replay).** If a `--resume` turn fails because the Claude session can't be found (the bridge reports this as `{ type: "error", code: "session_not_found" }`, detected from the CLI's error output), the backend recovers automatically within the same request:
+1. It generates a new session UUID.
+2. It runs a first turn with the normal system prompt plus a **"Discussion so far"** block containing the saved transcript (chat and review messages, in order, labelled Reader/Claude). The turn's message is the one that was pending: the reader's answer or the review request.
+3. On success, it updates `discussions.claude_session_id` to the new UUID.
+
+The reader sees one extra status line ("Reconnecting to the discussion…") and nothing else changes. Claude's private research context from earlier turns (fetched pages) isn't carried over; the transcript holds the substance, and Claude may search again. If the replay turn also fails, the usual retryable error is shown.
 
 **Quarter-star ratings.** `books.personal_rating` changes from `INTEGER CHECK (1..5)` to `REAL CHECK (personal_rating BETWEEN 1 AND 5 AND personal_rating * 4 = CAST(personal_rating * 4 AS INTEGER))`. SQLite can't alter a CHECK constraint, so the `books` table is rebuilt once, following the existing rebuild pattern in `connection.ts`:
 - It runs only when the stored table definition still has the old constraint, so it's idempotent.
@@ -135,14 +142,18 @@ The transcript lives in the app database, so it doesn't depend on Claude's sessi
 
 - **Bridge down:** health check fails → button disabled. A failure mid-turn → `error` event, retryable.
 - **Busy (409) or timeout:** a retryable error in the UI.
-- **Session missing on resume:** a non-retryable error that suggests starting a new discussion; the transcript stays viewable.
+- **Session missing on resume:** recovered automatically by transcript replay (section 2). Only a failure of the replay turn itself reaches the UI, as a retryable error.
 - **Book not completed:** `409` from `POST /api/books/:id/discussions`; the button isn't shown anyway.
 
 ## Testing
 
 - `data-safety.test.ts`: the ratings rebuild (see section 2), and new tables created without touching existing rows.
-- Backend unit tests (Jest, existing setup): review parsing (tags present or missing, rating snapping, invalid rating), system-prompt building (highlights and voice examples included), and the status flow for completed versus other books, using a fake bridge client.
-- Bridge: a manual smoke test with a real one-turn and a resumed turn, plus a check that the token is enforced and that `--tools` blocks Bash.
+- Backend unit tests (Jest, existing setup), using a fake bridge client:
+  - review parsing: tags present or missing, rating snapping, invalid rating;
+  - system-prompt building: highlights and voice examples included, and the transcript block on replay;
+  - the status flow for completed versus other books;
+  - session recovery: `session_not_found` → replay turn with the full transcript and the pending message → `claude_session_id` updated, with no duplicate user message saved.
+- Bridge: a manual smoke test with a real one-turn and a resumed turn, a resume of a nonexistent session (must yield `session_not_found`), plus a check that the token is enforced and that `--tools` blocks Bash.
 - UI: manual check in the preview (`scripts/preview.sh`) before promoting. No UI test suite, per project convention.
 
 ## Deploy notes
@@ -153,6 +164,5 @@ The transcript lives in the app database, so it doesn't depend on Claude's sessi
 
 ## Out of scope
 
-- Transcript replay into a new Claude session.
 - Discussions for in-progress or unstarted books.
 - Markdown rendering, multiple concurrent discussions, and exporting reviews to StoryGraph.
