@@ -18,7 +18,7 @@ Personal reading dashboard: reading plan, progress tracking, Kindle highlights, 
 ./scripts/redeploy.sh
 ```
 
-The script builds the working tree into an image tagged `personal-reading-tracker:<sha>[-dirty]`, then copies `data/reading-tracker.db*` to `backups/pre-deploy-<timestamp>/`. It replaces the container, keeping the old one as `reading-tracker-ui-test-prev`. Finally it polls `/api/health` and rolls back automatically if the check fails. Building on the Pi takes several minutes.
+The script builds the working tree into an image tagged `personal-reading-tracker:<sha>[-dirty]`, then copies `data/reading-tracker.db*` to `backups/pre-deploy-<timestamp>/`. It replaces the container, keeping the old one as `reading-tracker-ui-test-prev`. Finally it polls `/api/health` and rolls back automatically if the check fails. Building on the Pi takes ~10 minutes, so batch enhancements and deploy them together (see Pending deploy below).
 
 On startup, `scripts/docker-entrypoint.sh` seeds the DB only if it is empty, then runs `sync-reading-plan`. That sync reconciles the numbered master list without resetting progress.
 
@@ -26,8 +26,15 @@ On startup, `scripts/docker-entrypoint.sh` seeds the DB only if it is empty, the
 
 - **Live data:** `data/reading-tracker.db` is the user's real library (WAL mode). Never delete, reseed or reset it. Avoid `seed:reset*` / `seed:clear` against it. Startup code must never override a status the reader has changed (forced statuses apply only to `not_started` books).
 - **Dev data:** for local dev, point `DATABASE_PATH` at a copy (e.g. in `tmp/`).
-- **Filesystem:** the SSD is NTFS (fuseblk). Everything is root-owned with 0777 permissions, so git needs `safe.directory` entries (already configured globally). Symlinks and exec bits can be unreliable.
+- **Filesystem:** the SSD is NTFS (fuseblk), deliberately, so it can be moved to a Windows machine. Don't suggest reformatting it. Everything is root-owned with 0777 permissions. Permission-preserving operations fail (`cp -p`, chmod/chown), so never use them on project files. Git needs `safe.directory` entries (already configured globally).
 - **Node versions:** the host has Node 18, but the Docker images use Node 20. Prefer running builds inside Docker if versions matter.
 - **Testing:** there is no CI and no UI tests, on purpose (single-user personal site). The only suite is `backend/src/__tests__/data-safety.test.ts`, which guards saved progress, highlights and review state against everything that runs on deploy. Run `./scripts/test.sh` before deploying any change to `seed.ts`, `connection.ts`/`schema.sql`, the Kindle import, or the entrypoint. It runs in Docker with only `backend/` mounted, so it can't touch the live DB. When adding a new startup or import step, extend that test.
 - **Old draft:** local branch `backup/ssd-uncommitted-draft-2026-05` holds a superseded uncommitted draft that was found in this checkout. It is kept for reference only.
+- **Compose files:** `docker-compose*.yml` describe an older deployment on port 3003, retired Jul 2026. Don't `docker compose up` them: that would start a second instance on the same live DB. Use `scripts/redeploy.sh`.
 - **Old Codex worktree:** `/home/pi/Documents/Codex/2026-07-10-let-s-taking-a-look-at/reading-tracker-worktree` is a leftover worktree of this repo on the already-merged `feature/final-reading-list-modern-ui` branch.
+
+## Pending deploy
+
+Changes committed but not yet live (clear this list after each `scripts/redeploy.sh`):
+
+- (none)
